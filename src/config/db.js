@@ -10,6 +10,22 @@ const connectionString =
   process.env.POSTGRESQL_URL ||
   process.env.RAILWAY_DATABASE_URL;
 
+const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+const hasDiscreteDbConfig = Boolean(
+  process.env.DATABASE_NAME ||
+  process.env.PGDATABASE ||
+  process.env.DATABASE_USER ||
+  process.env.PGUSER ||
+  process.env.DATABASE_HOST ||
+  process.env.PGHOST
+);
+
+if (isProduction && !connectionString && !hasDiscreteDbConfig) {
+  throw new Error(
+    'No database configuration found. On Railway, link a PostgreSQL service or set DATABASE_URL before starting the backend.'
+  );
+}
+
 const databaseName = process.env.DATABASE_NAME || process.env.PGDATABASE;
 const databaseUser = process.env.DATABASE_USER || process.env.PGUSER;
 const databasePassword = process.env.DATABASE_PASSWORD || process.env.PGPASSWORD;
@@ -51,5 +67,11 @@ const sequelize = connectionString
           : {},
       }
     );
+
+  if (connectionString) {
+    console.log('Database config: using connection string environment variable.');
+  } else {
+    console.log(`Database config: using host ${databaseHost}:${databasePort} and database ${databaseName || '(unset)'}.`);
+  }
 
 module.exports = sequelize;

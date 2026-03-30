@@ -42,4 +42,35 @@ This repo is ready for Railway.
 
 - Start command: `npm start`
 - Health check path: `/api`
-- See `.env.example` for required environment variables.
+
+### Railway Variables
+
+Required:
+
+- `JWT_SECRET`
+- `CORS_ORIGINS=https://<your-vercel-domain>`
+
+Database configuration, choose one:
+
+- Preferred: link a Railway PostgreSQL service to this backend service so Railway injects `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, and `PGPASSWORD`
+- Or set `DATABASE_URL` to your PostgreSQL connection string
+
+Do not set these local fallback variables on Railway unless you intentionally want to override the linked database:
+
+- `DATABASE_HOST`
+- `DATABASE_PORT`
+- `DATABASE_NAME`
+- `DATABASE_USER`
+- `DATABASE_PASSWORD`
+
+If any of those are set to local values such as `localhost`, the backend will try to connect there and Railway deployment will fail.
+
+Optional for temporary hosting with existing profiles only:
+
+- `CORS_ORIGIN_PATTERNS=https://*.vercel.app`
+- `VERIFY_EMAIL_BASE_URL=https://<your-railway-domain>/api/auth/verify-email`
+- All `SMTP_*` variables
+
+If you are temporarily hosting with signup disabled on the frontend, SMTP is not required for existing users to sign in.
+
+See `.env.example` for local development defaults.

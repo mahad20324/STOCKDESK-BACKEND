@@ -1,8 +1,9 @@
-const app = require('./app');
-const { sequelize, initAppData } = require('./models');
 const dotenv = require('dotenv');
 
 dotenv.config();
+
+const app = require('./app');
+const { sequelize, initAppData } = require('./models');
 
 const PORT = process.env.PORT || 4000;
 

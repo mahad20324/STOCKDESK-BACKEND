@@ -1,5 +1,6 @@
-const { Sale, SaleItem, Product, Receipt, User, Setting, Shop, Customer } = require('../models');
+const { Sale, SaleItem, Product, Receipt, User, Setting, Shop, Customer, DayClosure } = require('../models');
 const { generateReceiptPdf } = require('../utils/receiptGenerator');
+const { startOfDay, endOfDay, getMetricsForRange } = require('../utils/businessMetrics');
 const { Op } = require('sequelize');
 
 function buildReceiptNumber(id) {
@@ -162,6 +163,64 @@ exports.getSaleReceipt = async (req, res, next) => {
     await generateReceiptPdf(res, sale, settings);
   } catch (error) {
     console.error('Receipt generation error:', error);
+    next(error);
+  }
+};
+
+exports.closeBusinessDay = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const closureDate = startOfDay(now).toISOString().slice(0, 10);
+    const existingClosure = await DayClosure.findOne({
+      where: { shopId: req.user.shopId, closedForDate: closureDate },
+      include: [{ model: User, as: 'closedBy', attributes: ['id', 'name'] }],
+    });
+
+    if (existingClosure) {
+      return res.status(200).json({
+        message: 'Business day was already closed for today.',
+        closure: existingClosure,
+        alreadyClosed: true,
+      });
+    }
+
+    const metrics = await getMetricsForRange(req.user.shopId, startOfDay(now), endOfDay(now));
+    const closure = await DayClosure.create({
+      closedForDate: closureDate,
+      closedByUserId: req.user.id,
+      shopId: req.user.shopId,
+      netSales: metrics.netSales,
+      grossSales: metrics.grossSales,
+      grossProfit: metrics.grossProfit,
+      itemsSold: metrics.itemsSold,
+      orderCount: metrics.orderCount,
+      discountTotal: metrics.discountTotal,
+    });
+
+    const savedClosure = await DayClosure.findByPk(closure.id, {
+      include: [{ model: User, as: 'closedBy', attributes: ['id', 'name'] }],
+    });
+
+    res.status(201).json({
+      message: 'Business day closed successfully. Sales history remains available for reporting.',
+      closure: savedClosure,
+      alreadyClosed: false,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.listDayClosures = async (req, res, next) => {
+  try {
+    const closures = await DayClosure.findAll({
+      where: { shopId: req.user.shopId },
+      include: [{ model: User, as: 'closedBy', attributes: ['id', 'name'] }],
+      order: [['closedForDate', 'DESC'], ['createdAt', 'DESC']],
+      limit: 10,
+    });
+    res.json(closures);
+  } catch (error) {
     next(error);
   }
 };

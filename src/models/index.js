@@ -2,6 +2,7 @@ const sequelize = require('../config/db');
 const Shop = require('./shop');
 const User = require('./user');
 const Customer = require('./customer');
+const DayClosure = require('./dayClosure');
 const Product = require('./product');
 const Sale = require('./sale');
 const SaleItem = require('./saleItem');
@@ -15,6 +16,9 @@ User.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 Shop.hasMany(Customer, { foreignKey: 'shopId', as: 'customers' });
 Customer.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+
+Shop.hasMany(DayClosure, { foreignKey: 'shopId', as: 'dayClosures' });
+DayClosure.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 Shop.hasMany(Product, { foreignKey: 'shopId', as: 'products' });
 Product.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
@@ -33,6 +37,9 @@ Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 User.hasMany(Sale, { foreignKey: 'cashierId', as: 'sales' });
 Sale.belongsTo(User, { foreignKey: 'cashierId', as: 'cashier' });
+
+User.hasMany(DayClosure, { foreignKey: 'closedByUserId', as: 'closedDays' });
+DayClosure.belongsTo(User, { foreignKey: 'closedByUserId', as: 'closedBy' });
 
 Customer.hasMany(Sale, { foreignKey: 'customerId', as: 'sales' });
 Sale.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
@@ -62,6 +69,7 @@ async function findOrCreateLegacyShop() {
 async function backfillShopOwnership(shopId) {
   await User.update({ shopId }, { where: { shopId: null } });
   await Customer.update({ shopId }, { where: { shopId: null } });
+  await DayClosure.update({ shopId }, { where: { shopId: null } });
   await Product.update({ shopId }, { where: { shopId: null } });
   await Sale.update({ shopId }, { where: { shopId: null } });
   await SaleItem.update({ shopId }, { where: { shopId: null } });
@@ -106,6 +114,7 @@ module.exports = {
   Shop,
   User,
   Customer,
+  DayClosure,
   Product,
   Sale,
   SaleItem,

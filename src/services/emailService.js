@@ -22,18 +22,21 @@ function createTransporter() {
   });
 }
 
+function getEmailProvider() {
+  if (process.env.BREVO_API_KEY) {
+    return 'brevo-api';
+  }
+
+  return 'smtp';
+}
+
 function buildVerificationUrl(token) {
   const baseUrl = process.env.VERIFY_EMAIL_BASE_URL || 'http://localhost:4000/api/auth/verify-email';
   const separator = baseUrl.includes('?') ? '&' : '?';
   return `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
 }
 
-async function sendVerificationEmail({ to, name, shopName, token }) {
-  const transporter = createTransporter();
-  const verificationUrl = buildVerificationUrl(token);
-  const fromEmail = getRequiredEnv('SMTP_FROM_EMAIL');
-  const fromName = process.env.SMTP_FROM_NAME || 'StockDesk';
-
+function buildVerificationEmail({ name, shopName, verificationUrl }) {
   const html = `
     <div style="font-family:Segoe UI,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a;">
       <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,0.08);">
@@ -66,13 +69,83 @@ async function sendVerificationEmail({ to, name, shopName, token }) {
     'If you did not request this account, you can ignore this email.',
   ].join('\n');
 
-  await transporter.sendMail({
-    from: `${fromName} <${fromEmail}>`,
-    to,
+  return {
     subject: `Verify your email for ${shopName}`,
     html,
     text,
+  };
+}
+
+async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName }) {
+  const apiKey = getRequiredEnv('BREVO_API_KEY');
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'api-key': apiKey,
+    },
+    body: JSON.stringify({
+      sender: {
+        name: fromName,
+        email: fromEmail,
+      },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
   });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    const error = new Error(`Brevo API request failed with status ${response.status}`);
+    error.status = 502;
+    error.code = 'BREVO_API_ERROR';
+    error.response = responseText;
+    error.responseCode = response.status;
+    throw error;
+  }
+}
+
+async function sendViaSmtp({ to, subject, html, text, fromEmail, fromName }) {
+  const transporter = createTransporter();
+
+  await transporter.sendMail({
+    from: `${fromName} <${fromEmail}>`,
+    to,
+    subject,
+    html,
+    text,
+  });
+}
+
+async function sendVerificationEmail({ to, name, shopName, token }) {
+  const verificationUrl = buildVerificationUrl(token);
+  const fromEmail = getRequiredEnv('SMTP_FROM_EMAIL');
+  const fromName = process.env.SMTP_FROM_NAME || 'StockDesk';
+  const { subject, html, text } = buildVerificationEmail({ name, shopName, verificationUrl });
+
+  if (getEmailProvider() === 'brevo-api') {
+    await sendViaBrevoApi({
+      to,
+      subject,
+      html,
+      text,
+      fromEmail,
+      fromName,
+    });
+  } else {
+    await sendViaSmtp({
+      to,
+      subject,
+      html,
+      text,
+      fromEmail,
+      fromName,
+    });
+  }
 
   return verificationUrl;
 }

@@ -141,6 +141,13 @@ exports.signup = async (req, res, next) => {
         token: verificationToken,
       });
     } catch (error) {
+      console.error('Verification email send failed:', {
+        message: error.message,
+        code: error.code,
+        response: error.response,
+        responseCode: error.responseCode,
+        command: error.command,
+      });
       await transaction.rollback();
       error.status = error.status || 502;
       error.message = 'Failed to send verification email. Please try again.';

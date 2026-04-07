@@ -7,8 +7,8 @@ const userController = require('../controllers/userController');
 
 router.use(authenticate);
 
-// Admin only: Reset all revenue (must be before :id route)
-router.post('/reset-revenue', authorize(['Admin']), userController.resetRevenue);
+router.get('/day-closures', authorize(['Admin']), saleController.listDayClosures);
+router.post('/close-day', authorize(['Admin']), saleController.closeBusinessDay);
 
 router.post('/', saleController.createSale);
 router.get('/', saleController.listSales);

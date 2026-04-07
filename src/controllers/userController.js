@@ -103,15 +103,3 @@ exports.deleteUser = async (req, res, next) => {
   }
 };
 
-exports.resetRevenue = async (req, res, next) => {
-  try {
-    const { Sale, SaleItem, Receipt } = require('../models');
-    // Delete all sales and related data
-    await SaleItem.destroy({ where: { shopId: req.user.shopId } });
-    await Receipt.destroy({ where: { shopId: req.user.shopId } });
-    await Sale.destroy({ where: { shopId: req.user.shopId } });
-    res.json({ message: 'All revenue and sales data has been reset successfully.' });
-  } catch (error) {
-    next(error);
-  }
-};

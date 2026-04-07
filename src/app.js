@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const customerRoutes = require('./routes/customers');
 const productRoutes = require('./routes/products');
 const saleRoutes = require('./routes/sales');
 const settingsRoutes = require('./routes/settings');
@@ -63,6 +64,7 @@ app.get('/api', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/settings', settingsRoutes);

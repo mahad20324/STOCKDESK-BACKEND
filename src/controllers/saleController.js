@@ -1,4 +1,4 @@
-const { Sale, SaleItem, Product, Receipt, User, Setting, Shop } = require('../models');
+const { Sale, SaleItem, Product, Receipt, User, Setting, Shop, Customer } = require('../models');
 const { generateReceiptPdf } = require('../utils/receiptGenerator');
 const { Op } = require('sequelize');
 
@@ -9,7 +9,7 @@ function buildReceiptNumber(id) {
 exports.createSale = async (req, res, next) => {
   const transaction = await Sale.sequelize.transaction();
   try {
-    const { items, paymentMethod, currency, discount = 0, discountType = 'fixed' } = req.body;
+    const { items, paymentMethod, currency, discount = 0, discountType = 'fixed', customerId = null } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error('Sale must include at least one item');
     }
@@ -19,6 +19,14 @@ exports.createSale = async (req, res, next) => {
       include: [{ model: Shop, as: 'shop', attributes: ['id', 'name', 'slug'] }],
     });
     const saleCurrency = currency || (settings && settings.currency) || 'USD';
+
+    let customer = null;
+    if (customerId) {
+      customer = await Customer.findOne({ where: { id: customerId, shopId: req.user.shopId }, transaction });
+      if (!customer) {
+        throw new Error('Selected customer not found');
+      }
+    }
 
     let subtotal = 0;
     const itemRecords = [];
@@ -54,6 +62,7 @@ exports.createSale = async (req, res, next) => {
         discount: discountAmount,
         discountType,
         cashierId: req.user.id,
+        customerId: customer ? customer.id : null,
         shopId: req.user.shopId,
         paymentMethod,
         currency: saleCurrency,
@@ -80,7 +89,11 @@ exports.listSales = async (req, res, next) => {
   try {
     const sales = await Sale.findAll({
       where: { shopId: req.user.shopId },
-      include: [{ model: User, as: 'cashier', attributes: ['id', 'name'] }, { model: Receipt, as: 'receipt' }],
+      include: [
+        { model: User, as: 'cashier', attributes: ['id', 'name'] },
+        { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'] },
+        { model: Receipt, as: 'receipt' },
+      ],
       order: [['createdAt', 'DESC']],
     });
     res.json(sales);
@@ -102,6 +115,7 @@ exports.getSale = async (req, res, next) => {
           include: [{ model: Product, attributes: ['id', 'name', 'sellPrice'] }],
         },
         { model: User, as: 'cashier', attributes: ['id', 'name'] },
+        { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone', 'email'] },
         { model: Receipt, as: 'receipt' },
       ],
     });
@@ -129,6 +143,7 @@ exports.getSaleReceipt = async (req, res, next) => {
           include: [{ model: Product, attributes: ['name'] }],
         },
         { model: User, as: 'cashier', attributes: ['id', 'name'] },
+        { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone', 'email'] },
         { model: Receipt, as: 'receipt' },
       ],
     });

@@ -161,16 +161,17 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
 
   const notesText = settings.receiptHeader || 'Please keep this receipt for exchange, returns, or warranty support.';
   const footerText = settings.receiptFooter || 'Thank you for shopping with us.';
-  const notesBodyHeight = doc.heightOfString(notesText, { width: 246, lineGap: 2 }) + doc.heightOfString(footerText, { width: 246, lineGap: 2 }) + 28;
-  const notesHeight = Math.max(106, notesBodyHeight + 34);
-  const summaryHeight = 148;
+  const notesWidth = 270;
+  const gap = 16;
+  const summaryWidth = contentWidth - notesWidth - gap;
+  const notesBodyWidth = notesWidth - 36;
+  const notesBodyHeight = doc.heightOfString(notesText, { width: notesBodyWidth, lineGap: 2 }) + doc.heightOfString(footerText, { width: notesBodyWidth, lineGap: 2 }) + 28;
+  const notesHeight = Math.max(118, notesBodyHeight + 40);
+  const summaryHeight = 184;
   const sectionHeight = Math.max(notesHeight, summaryHeight);
 
   ensureSpace(sectionHeight + 24, 'summary');
   const sectionTop = cursorY + 18;
-  const notesWidth = 300;
-  const gap = 18;
-  const summaryWidth = contentWidth - notesWidth - gap;
   const summaryX = margin + notesWidth + gap;
 
   doc.roundedRect(margin, sectionTop, notesWidth, sectionHeight, 12).strokeColor(border).lineWidth(1).stroke();
@@ -198,31 +199,28 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   summaryY += 24;
 
   const drawSummaryRow = (label, value, options = {}) => {
-    if (!options.highlight) {
-      doc.moveTo(summaryX + 16, summaryY - 6).lineTo(summaryX + summaryWidth - 16, summaryY - 6).strokeColor('#E7EEF3').lineWidth(1).stroke();
-    }
-
     if (options.highlight) {
-      doc.roundedRect(summaryX + 12, summaryY - 2, summaryWidth - 24, 34, 8).fill(accent);
+      doc.roundedRect(summaryX + 12, summaryY, summaryWidth - 24, 46, 8).fill(accent);
       doc.fillColor('white');
     } else {
+      doc.moveTo(summaryX + 16, summaryY - 6).lineTo(summaryX + summaryWidth - 16, summaryY - 6).strokeColor('#E7EEF3').lineWidth(1).stroke();
       doc.fillColor(options.color || muted);
     }
 
     doc.font(options.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(options.size || 10);
-    doc.text(label, summaryX + 18, summaryY + (options.highlight ? 9 : 0), { width: 90 });
+    doc.text(label, summaryX + 18, summaryY + (options.highlight ? 14 : 0), { width: 92 });
     doc.font(options.highlight ? 'Helvetica-Bold' : 'Courier').fontSize(options.size || 10);
-    doc.text(value, summaryX + 112, summaryY + (options.highlight ? 9 : 0), {
-      width: summaryWidth - 130,
+    doc.text(value, summaryX + 118, summaryY + (options.highlight ? 11 : 0), {
+      width: summaryWidth - 138,
       align: 'right',
     });
-    summaryY += options.spacing || 26;
+    summaryY += options.spacing || (options.highlight ? 58 : 28);
   };
 
   drawSummaryRow('Subtotal', money(subtotal), { color: dark });
   drawSummaryRow('Discount', `${discount > 0 ? '- ' : ''}${money(discount)}`, { color: discount > 0 ? '#C81E1E' : '#9AA5B1' });
   drawSummaryRow(`VAT (${parseFloat(settings.vat || 0).toFixed(2)}%)`, money(vatAmount), { color: vatAmount > 0 ? dark : '#9AA5B1' });
-  drawSummaryRow('Total', money(total), { bold: true, size: 13, spacing: 40, highlight: true });
+  drawSummaryRow('Total', money(total), { bold: true, size: 15, highlight: true });
 
   doc.end();
 };

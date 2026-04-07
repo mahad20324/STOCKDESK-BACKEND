@@ -1,17 +1,20 @@
 const sequelize = require('../config/db');
 const Shop = require('./shop');
 const User = require('./user');
+const Customer = require('./customer');
 const Product = require('./product');
 const Sale = require('./sale');
 const SaleItem = require('./saleItem');
 const Receipt = require('./receipt');
 const Setting = require('./setting');
-const bcrypt = require('bcrypt');
 const { backfillMissingUsernames } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
 Shop.hasMany(User, { foreignKey: 'shopId', as: 'users' });
 User.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+
+Shop.hasMany(Customer, { foreignKey: 'shopId', as: 'customers' });
+Customer.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 Shop.hasMany(Product, { foreignKey: 'shopId', as: 'products' });
 Product.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
@@ -30,6 +33,9 @@ Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 User.hasMany(Sale, { foreignKey: 'cashierId', as: 'sales' });
 Sale.belongsTo(User, { foreignKey: 'cashierId', as: 'cashier' });
+
+Customer.hasMany(Sale, { foreignKey: 'customerId', as: 'sales' });
+Sale.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
 
 Sale.hasMany(SaleItem, { foreignKey: 'saleId', as: 'items' });
 SaleItem.belongsTo(Sale, { foreignKey: 'saleId' });
@@ -55,6 +61,7 @@ async function findOrCreateLegacyShop() {
 
 async function backfillShopOwnership(shopId) {
   await User.update({ shopId }, { where: { shopId: null } });
+  await Customer.update({ shopId }, { where: { shopId: null } });
   await Product.update({ shopId }, { where: { shopId: null } });
   await Sale.update({ shopId }, { where: { shopId: null } });
   await SaleItem.update({ shopId }, { where: { shopId: null } });
@@ -80,44 +87,17 @@ async function initAppData() {
     });
   }
 
-  const admin = await User.findOne({ where: { email: 'admin@stockdesk.local' } });
-  if (!admin) {
-    const password = await bcrypt.hash('Admin@123', 10);
-    await User.create({
-      name: 'Admin User',
-      username: 'admin',
-      email: 'admin@stockdesk.local',
-      password,
-      role: 'Admin',
+  const walkInCustomer = await Customer.findOne({ where: { shopId: legacyShop.id, name: 'Walk-in Customer' } });
+  if (!walkInCustomer) {
+    await Customer.create({
+      name: 'Walk-in Customer',
+      phone: null,
+      email: null,
+      address: null,
+      notes: 'Default customer profile for counter sales.',
       shopId: legacyShop.id,
-      isVerified: true,
-      verificationToken: null,
+      isActive: true,
     });
-  } else if (!admin.shopId) {
-    admin.shopId = legacyShop.id;
-    admin.isVerified = true;
-    admin.verificationToken = null;
-    await admin.save();
-  }
-
-  const mahad = await User.findOne({ where: { username: 'mahad' } });
-  if (!mahad) {
-    const password = await bcrypt.hash('mahad@123', 10);
-    await User.create({
-      name: 'Mahad Admin',
-      username: 'mahad',
-      email: 'mahad@stockdesk.local',
-      password,
-      role: 'Admin',
-      shopId: legacyShop.id,
-      isVerified: true,
-      verificationToken: null,
-    });
-  } else if (!mahad.shopId) {
-    mahad.shopId = legacyShop.id;
-    mahad.isVerified = true;
-    mahad.verificationToken = null;
-    await mahad.save();
   }
 }
 
@@ -125,6 +105,7 @@ module.exports = {
   sequelize,
   Shop,
   User,
+  Customer,
   Product,
   Sale,
   SaleItem,

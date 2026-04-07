@@ -23,6 +23,10 @@ Sale.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    customerId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     paymentMethod: {
       type: DataTypes.ENUM('Cash', 'Card', 'Mobile Money'),
       allowNull: false,

@@ -32,7 +32,7 @@ User.init(
       allowNull: false,
     },
     role: {
-      type: DataTypes.ENUM('Admin', 'Cashier', 'Manager'),
+      type: DataTypes.ENUM('SuperAdmin', 'Admin', 'Cashier', 'Manager'),
       allowNull: false,
       defaultValue: 'Cashier',
     },

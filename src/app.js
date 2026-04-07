@@ -8,6 +8,7 @@ const saleRoutes = require('./routes/sales');
 const settingsRoutes = require('./routes/settings');
 const reportRoutes = require('./routes/reports');
 const printerRoutes = require('./routes/printer');
+const adminRoutes = require('./routes/admin');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -70,6 +71,7 @@ app.use('/api/sales', saleRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/printer', printerRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use(errorHandler);
 

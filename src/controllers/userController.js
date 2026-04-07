@@ -2,6 +2,8 @@ const bcrypt = require('bcrypt');
 const { User } = require('../models');
 const { generateUniqueUsername, normalizeUsername } = require('../utils/username');
 
+const MANAGEABLE_SHOP_ROLES = ['Admin', 'Manager', 'Cashier'];
+
 exports.listUsers = async (req, res, next) => {
   try {
     const users = await User.findAll({
@@ -30,6 +32,9 @@ exports.getUser = async (req, res, next) => {
 exports.createUser = async (req, res, next) => {
   try {
     const { name, username, email, password, role } = req.body;
+    if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
+      return res.status(400).json({ message: 'Invalid role selected' });
+    }
     const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
     const resolvedUsername = await generateUniqueUsername(User, {
       username,
@@ -81,7 +86,12 @@ exports.updateUser = async (req, res, next) => {
         user.id
       );
     }
-    if (role) user.role = role;
+    if (role) {
+      if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
+        return res.status(400).json({ message: 'Invalid role selected' });
+      }
+      user.role = role;
+    }
     if (password) {
       user.password = await bcrypt.hash(password, 10);
     }

@@ -153,6 +153,9 @@ async function sendVerificationEmail({ to, name, shopName, token }) {
   return verificationUrl;
 }
 
+// Log provider on module load so deploy logs show which path is active
+console.log(`[emailService] Provider on boot: ${getEmailProvider()}`);
+
 module.exports = {
   sendVerificationEmail,
 };

@@ -47,10 +47,6 @@ User.init(
       type: DataTypes.STRING,
       allowNull: true,
     },
-    lastLoginAt: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
   },
   {
     sequelize,

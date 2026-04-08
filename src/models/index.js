@@ -10,6 +10,7 @@ const Sale = require('./sale');
 const SaleItem = require('./saleItem');
 const Receipt = require('./receipt');
 const Setting = require('./setting');
+const ShopActivity = require('./shopActivity');
 const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
@@ -36,6 +37,12 @@ Receipt.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 Shop.hasOne(Setting, { foreignKey: 'shopId', as: 'settings' });
 Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+
+Shop.hasOne(ShopActivity, { foreignKey: 'shopId', as: 'activityLog' });
+ShopActivity.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+
+User.hasMany(ShopActivity, { foreignKey: 'lastActiveUserId', as: 'activityEvents' });
+ShopActivity.belongsTo(User, { foreignKey: 'lastActiveUserId', as: 'lastActiveUser' });
 
 User.hasMany(Sale, { foreignKey: 'cashierId', as: 'sales' });
 Sale.belongsTo(User, { foreignKey: 'cashierId', as: 'cashier' });
@@ -222,5 +229,6 @@ module.exports = {
   SaleItem,
   Receipt,
   Setting,
+  ShopActivity,
   initAppData,
 };

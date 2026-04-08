@@ -1,32 +1,42 @@
-const { Op } = require('sequelize');
-const { Setting, Shop, User } = require('../models');
+const { Setting, Shop, ShopActivity, User } = require('../models');
 
 const ACTIVE_WINDOW_HOURS = 24;
 
 async function buildShopSnapshots() {
   const shops = await Shop.findAll({
     attributes: ['id', 'name', 'slug', 'isActive', 'createdAt'],
-    include: [{ model: Setting, as: 'settings', attributes: ['currency'], required: false }],
+    include: [
+      { model: Setting, as: 'settings', attributes: ['currency'], required: false },
+      {
+        model: ShopActivity,
+        as: 'activityLog',
+        attributes: ['lastLoginAt', 'lastActiveUserId'],
+        required: false,
+        include: [
+          {
+            model: User,
+            as: 'lastActiveUser',
+            attributes: ['id', 'name', 'username', 'role'],
+            required: false,
+          },
+        ],
+      },
+    ],
     order: [['createdAt', 'DESC']],
   });
 
   return Promise.all(
     shops.map(async (shop) => {
-      const [owner, userCount, lastActiveUser] = await Promise.all([
+      const [owner, userCount] = await Promise.all([
         User.findOne({
           where: { shopId: shop.id, role: 'Admin' },
-          attributes: ['id', 'name', 'username', 'createdAt', 'lastLoginAt'],
+          attributes: ['id', 'name', 'username', 'createdAt'],
           order: [['createdAt', 'ASC']],
         }),
         User.count({ where: { shopId: shop.id } }),
-        User.findOne({
-          where: { shopId: shop.id, lastLoginAt: { [Op.ne]: null } },
-          attributes: ['id', 'name', 'username', 'role', 'lastLoginAt'],
-          order: [['lastLoginAt', 'DESC'], ['updatedAt', 'DESC']],
-        }),
       ]);
 
-      const lastLoginAt = lastActiveUser?.lastLoginAt || owner?.lastLoginAt || null;
+      const lastLoginAt = shop.activityLog?.lastLoginAt || null;
 
       return {
         id: shop.id,
@@ -41,7 +51,6 @@ async function buildShopSnapshots() {
               name: owner.name,
               username: owner.username,
               createdAt: owner.createdAt,
-                lastLoginAt: owner.lastLoginAt,
             }
           : null,
         metrics: {
@@ -49,12 +58,12 @@ async function buildShopSnapshots() {
         },
         activity: {
           lastLoginAt,
-          lastActiveUser: lastActiveUser
+          lastActiveUser: shop.activityLog?.lastActiveUser
             ? {
-                id: lastActiveUser.id,
-                name: lastActiveUser.name,
-                username: lastActiveUser.username,
-                role: lastActiveUser.role,
+                id: shop.activityLog.lastActiveUser.id,
+                name: shop.activityLog.lastActiveUser.name,
+                username: shop.activityLog.lastActiveUser.username,
+                role: shop.activityLog.lastActiveUser.role,
               }
             : null,
         },

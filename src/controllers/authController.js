@@ -54,6 +54,9 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid shop name, username, or password' });
     }
 
+    user.lastLoginAt = new Date();
+    await user.save();
+
     if (!shop && user.shopId) {
       shop = await Shop.findByPk(user.shopId, { attributes: ['id', 'name', 'slug'] });
     }

@@ -122,12 +122,15 @@ async function sendViaSmtp({ to, subject, html, text, fromEmail, fromName }) {
 }
 
 async function sendVerificationEmail({ to, name, shopName, token }) {
+  const provider = getEmailProvider();
   const verificationUrl = buildVerificationUrl(token);
   const fromEmail = getRequiredEnv('SMTP_FROM_EMAIL');
   const fromName = process.env.SMTP_FROM_NAME || 'StockDesk';
   const { subject, html, text } = buildVerificationEmail({ name, shopName, verificationUrl });
 
-  if (getEmailProvider() === 'brevo-api') {
+  console.log(`Sending verification email using provider: ${provider}`);
+
+  if (provider === 'brevo-api') {
     await sendViaBrevoApi({
       to,
       subject,

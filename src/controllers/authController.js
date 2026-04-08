@@ -2,14 +2,12 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { Shop, User, Setting, sequelize } = require('../models');
 const { Op } = require('sequelize');
-const { generateUniqueUsername } = require('../utils/username');
+const { normalizeUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
-const { generateUniqueVerificationToken } = require('../utils/verification');
-const { sendVerificationEmail } = require('../services/emailService');
 
 function signToken(user) {
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role, shopId: user.shopId },
+    { id: user.id, role: user.role, shopId: user.shopId },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
@@ -17,43 +15,44 @@ function signToken(user) {
 
 exports.login = async (req, res, next) => {
   try {
-    const username = req.body.username ? req.body.username.trim() : '';
+    const shopName = req.body.shopName ? String(req.body.shopName).trim() : '';
+    const username = normalizeUsername(req.body.username);
     const password = req.body.password;
-    
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Username/email and password are required' });
+
+    if (!shopName || !username || !password) {
+      return res.status(400).json({ message: 'Shop name, username, and password are required' });
     }
 
-    // Try username first, then email (case-insensitive)
-    let user = await User.findOne({ where: { username: username } });
-    if (!user) {
-      user = await User.findOne({ where: { email: { [Op.iLike]: username } } });
+    const shop = await Shop.findOne({
+      where: {
+        name: {
+          [Op.iLike]: shopName,
+        },
+      },
+      attributes: ['id', 'name', 'slug'],
+    });
+
+    if (!shop) {
+      return res.status(401).json({ message: 'Invalid shop name, username, or password' });
     }
-    
+
+    const user = await User.findOne({ where: { shopId: shop.id, username } });
+
     if (!user) {
-      console.warn(`Login attempt failed: User not found for "${username}"`);
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid shop name, username, or password' });
     }
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
-      console.warn(`Login attempt failed: Invalid password for user ${user.email}`);
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid shop name, username, or password' });
     }
 
-    if (!user.isVerified) {
-      return res.status(403).json({ message: 'Please verify your email' });
-    }
-
-    console.log(`Successfully logged in: ${user.email}`);
     const token = signToken(user);
-    const shop = user.shopId ? await Shop.findByPk(user.shopId, { attributes: ['id', 'name', 'slug'] }) : null;
     res.json({
       token,
       user: {
         id: user.id,
         name: user.name,
-        email: user.email,
         username: user.username,
         role: user.role,
         shopId: user.shopId,
@@ -72,31 +71,42 @@ exports.signup = async (req, res, next) => {
   try {
     const {
       shopName,
-      address,
-      phone,
-      currency = 'USD',
-      name,
       username,
-      email,
       password,
+      confirmPassword,
     } = req.body;
 
-    if (!shopName || !name || !username || !email || !password) {
+    const normalizedShopName = shopName ? String(shopName).trim() : '';
+    const normalizedUsername = normalizeUsername(username);
+
+    if (!normalizedShopName || !normalizedUsername || !password || !confirmPassword) {
       await transaction.rollback();
-      return res.status(400).json({ message: 'Shop name, admin name, email, username, and password are required' });
+      return res.status(400).json({ message: 'Shop name, admin username, password, and confirm password are required' });
     }
 
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const existingUser = await User.findOne({ where: { email: normalizedEmail }, transaction });
-    if (existingUser) {
+    if (password !== confirmPassword) {
       await transaction.rollback();
-      return res.status(409).json({ message: 'Email is already in use' });
+      return res.status(400).json({ message: 'Passwords do not match' });
+    }
+
+    const existingShop = await Shop.findOne({
+      where: {
+        name: {
+          [Op.iLike]: normalizedShopName,
+        },
+      },
+      transaction,
+    });
+
+    if (existingShop) {
+      await transaction.rollback();
+      return res.status(409).json({ message: 'Shop name is already in use' });
     }
 
     const shop = await Shop.create(
       {
-        name: String(shopName).trim(),
-        slug: await generateUniqueShopSlug(Shop, shopName),
+        name: normalizedShopName,
+        slug: await generateUniqueShopSlug(Shop, normalizedShopName),
       },
       { transaction }
     );
@@ -104,53 +114,42 @@ exports.signup = async (req, res, next) => {
     await Setting.create(
       {
         shopName: shop.name,
-        address: address ? String(address).trim() : 'Address not provided',
-        phone: phone ? String(phone).trim() : 'Phone not provided',
-        currency,
+        address: '',
+        phone: '',
+        currency: 'USD',
         shopId: shop.id,
       },
       { transaction }
     );
 
-    const resolvedUsername = await generateUniqueUsername(User, {
-      username,
-      email: normalizedEmail,
-      name,
-    });
-    const verificationToken = await generateUniqueVerificationToken(User);
+    const existingUser = await User.findOne({ where: { shopId: shop.id, username: normalizedUsername }, transaction });
+    if (existingUser) {
+      await transaction.rollback();
+      return res.status(409).json({ message: 'Username is already in use for this shop' });
+    }
+
     const hash = await bcrypt.hash(password, 10);
     const user = await User.create(
       {
-        name: String(name).trim(),
-        username: resolvedUsername,
-        email: normalizedEmail,
+        name: normalizedUsername,
+        username: normalizedUsername,
+        email: null,
         password: hash,
         role: 'Admin',
         shopId: shop.id,
-        isVerified: false,
-        verificationToken,
+        isVerified: true,
+        verificationToken: null,
       },
       { transaction }
     );
-
-    try {
-      await sendVerificationEmail({
-        to: normalizedEmail,
-        name: user.name,
-        shopName: shop.name,
-        token: verificationToken,
-      });
-    } catch (error) {
-      await transaction.rollback();
-      error.status = error.status || 502;
-      error.message = 'Failed to send verification email. Please try again.';
-      throw error;
-    }
 
     await transaction.commit();
 
     res.status(201).json({
-      message: 'Verification email sent. Please verify your email before signing in.',
+      message: 'Shop created successfully.',
+      shopName: shop.name,
+      username: user.username,
+      password,
     });
   } catch (error) {
     if (!transaction.finished) {
@@ -159,62 +158,3 @@ exports.signup = async (req, res, next) => {
     next(error);
   }
 };
-
-exports.verifyEmail = async (req, res, next) => {
-  try {
-    const token = req.query.token ? String(req.query.token).trim() : '';
-
-    if (!token) {
-      return res.status(400).send(renderVerificationPage({
-        title: 'Verification Failed',
-        message: 'Invalid or expired verification token.',
-        accent: '#b91c1c',
-      }));
-    }
-
-    const user = await User.findOne({ where: { verificationToken: token } });
-    if (!user) {
-      return res.status(400).send(renderVerificationPage({
-        title: 'Verification Failed',
-        message: 'Invalid or expired verification token.',
-        accent: '#b91c1c',
-      }));
-    }
-
-    user.isVerified = true;
-    user.verificationToken = null;
-    await user.save();
-
-    return res.send(renderVerificationPage({
-      title: 'Email Verified',
-      message: 'Your email has been verified. You can now return to StockDesk and sign in.',
-      accent: '#0f766e',
-    }));
-  } catch (error) {
-    next(error);
-  }
-};
-
-function renderVerificationPage({ title, message, accent }) {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>${title}</title>
-      </head>
-      <body style="margin:0;font-family:Segoe UI,Arial,sans-serif;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
-        <div style="max-width:560px;width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:24px;box-shadow:0 16px 50px rgba(15,23,42,0.08);overflow:hidden;">
-          <div style="padding:28px 32px;background:${accent};color:#fff;">
-            <div style="font-size:12px;letter-spacing:0.2em;text-transform:uppercase;opacity:0.78;">StockDesk</div>
-            <h1 style="margin:10px 0 0;font-size:28px;">${title}</h1>
-          </div>
-          <div style="padding:32px;">
-            <p style="margin:0;font-size:16px;line-height:1.7;color:#334155;">${message}</p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `;
-}

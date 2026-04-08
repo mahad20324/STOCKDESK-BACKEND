@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const sequelize = require('../config/db');
 const Shop = require('./shop');
 const User = require('./user');
@@ -82,7 +83,8 @@ async function initAppData() {
 
   await backfillShopOwnership(legacyShop.id);
   await backfillMissingUsernames(User);
-  await User.update({ isVerified: true }, { where: { verificationToken: null } });
+  await User.update({ role: 'Staff' }, { where: { role: { [Op.in]: ['Cashier', 'Manager'] } } });
+  await User.update({ isVerified: true, verificationToken: null }, { where: {} });
 
   const defaultSettings = await Setting.findOne({ where: { shopId: legacyShop.id } });
   if (!defaultSettings) {

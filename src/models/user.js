@@ -16,13 +16,11 @@ User.init(
     },
     username: {
       type: DataTypes.STRING,
-      allowNull: true,
-      unique: true,
+      allowNull: false,
     },
     email: {
       type: DataTypes.STRING,
       allowNull: true,
-      unique: true,
       validate: {
         isEmail: true,
       },
@@ -32,9 +30,9 @@ User.init(
       allowNull: false,
     },
     role: {
-      type: DataTypes.ENUM('Admin', 'Cashier', 'Manager'),
+      type: DataTypes.ENUM('Admin', 'Staff'),
       allowNull: false,
-      defaultValue: 'Cashier',
+      defaultValue: 'Staff',
     },
     shopId: {
       type: DataTypes.INTEGER,
@@ -43,12 +41,11 @@ User.init(
     isVerified: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: false,
+      defaultValue: true,
     },
     verificationToken: {
       type: DataTypes.STRING,
       allowNull: true,
-      unique: true,
     },
   },
   {
@@ -57,6 +54,12 @@ User.init(
     tableName: 'users',
     timestamps: true,
     underscored: false,
+    indexes: [
+      {
+        unique: true,
+        fields: ['shopId', 'username'],
+      },
+    ],
   }
 );
 

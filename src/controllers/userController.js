@@ -1,14 +1,15 @@
 const bcrypt = require('bcrypt');
 const { User } = require('../models');
-const { generateUniqueUsername, normalizeUsername } = require('../utils/username');
+const { normalizeUsername } = require('../utils/username');
 
-const MANAGEABLE_SHOP_ROLES = ['Admin', 'Manager', 'Cashier'];
+const MANAGEABLE_SHOP_ROLES = ['Admin', 'Staff'];
 
 exports.listUsers = async (req, res, next) => {
   try {
     const users = await User.findAll({
       where: { shopId: req.user.shopId },
-      attributes: ['id', 'name', 'username', 'email', 'role', 'createdAt', 'shopId'],
+      attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
+      order: [['createdAt', 'ASC']],
     });
     res.json(users);
   } catch (error) {
@@ -20,7 +21,7 @@ exports.getUser = async (req, res, next) => {
   try {
     const user = await User.findOne({
       where: { id: req.params.id, shopId: req.user.shopId },
-      attributes: ['id', 'name', 'username', 'email', 'role', 'createdAt', 'shopId'],
+      attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
     });
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
@@ -31,21 +32,31 @@ exports.getUser = async (req, res, next) => {
 
 exports.createUser = async (req, res, next) => {
   try {
-    const { name, username, email, password, role } = req.body;
+    const username = normalizeUsername(req.body.username);
+    const password = req.body.password ? String(req.body.password) : '';
+    const confirmPassword = req.body.confirmPassword ? String(req.body.confirmPassword) : '';
+    const role = req.body.role || 'Staff';
+
+    if (!username || !password || !confirmPassword) {
+      return res.status(400).json({ message: 'Username, password, and confirm password are required' });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match' });
+    }
     if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
       return res.status(400).json({ message: 'Invalid role selected' });
     }
-    const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
-    const resolvedUsername = await generateUniqueUsername(User, {
-      username,
-      email: normalizedEmail,
-      name,
-    });
+
+    const existingUser = await User.findOne({ where: { shopId: req.user.shopId, username } });
+    if (existingUser) {
+      return res.status(409).json({ message: 'Username is already in use for this shop' });
+    }
+
     const hash = await bcrypt.hash(password, 10);
     const user = await User.create({
-      name: name.trim(),
-      username: resolvedUsername,
-      email: normalizedEmail,
+      name: username,
+      username,
+      email: null,
       password: hash,
       role,
       shopId: req.user.shopId,
@@ -57,7 +68,6 @@ exports.createUser = async (req, res, next) => {
       id: user.id,
       name: user.name,
       username: user.username,
-      email: user.email,
       role: user.role,
       shopId: user.shopId,
       plainPassword: password,
@@ -72,19 +82,23 @@ exports.updateUser = async (req, res, next) => {
     const user = await User.findOne({ where: { id: req.params.id, shopId: req.user.shopId } });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const { name, username, email, password, role } = req.body;
-    if (name) user.name = name.trim();
-    if (email) user.email = String(email).trim().toLowerCase();
+    const { username, role } = req.body;
     if (username !== undefined) {
-      user.username = await generateUniqueUsername(
-        User,
-        {
-          username: normalizeUsername(username),
-          email: user.email,
-          name: user.name,
+      const normalizedUsername = normalizeUsername(username);
+      if (!normalizedUsername) {
+        return res.status(400).json({ message: 'Username is required' });
+      }
+      const existingUser = await User.findOne({
+        where: {
+          shopId: req.user.shopId,
+          username: normalizedUsername,
         },
-        user.id
-      );
+      });
+      if (existingUser && existingUser.id !== user.id) {
+        return res.status(409).json({ message: 'Username is already in use for this shop' });
+      }
+      user.username = normalizedUsername;
+      user.name = normalizedUsername;
     }
     if (role) {
       if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
@@ -92,12 +106,38 @@ exports.updateUser = async (req, res, next) => {
       }
       user.role = role;
     }
-    if (password) {
-      user.password = await bcrypt.hash(password, 10);
-    }
     await user.save();
 
-    res.json({ id: user.id, name: user.name, username: user.username, email: user.email, role: user.role, shopId: user.shopId });
+    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, shopId: user.shopId });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const user = await User.findOne({ where: { id: req.params.id, shopId: req.user.shopId } });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const password = req.body.password ? String(req.body.password) : '';
+    const confirmPassword = req.body.confirmPassword ? String(req.body.confirmPassword) : '';
+
+    if (!password || !confirmPassword) {
+      return res.status(400).json({ message: 'Password and confirm password are required' });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match' });
+    }
+
+    user.password = await bcrypt.hash(password, 10);
+    await user.save();
+
+    res.json({
+      message: 'Password reset successfully.',
+      id: user.id,
+      username: user.username,
+      plainPassword: password,
+    });
   } catch (error) {
     next(error);
   }

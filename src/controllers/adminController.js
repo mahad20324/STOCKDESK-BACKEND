@@ -13,7 +13,7 @@ exports.listShops = async (req, res, next) => {
         const [owner, userCount, productCount, saleCount] = await Promise.all([
           User.findOne({
             where: { shopId: shop.id, role: 'Admin' },
-            attributes: ['id', 'name', 'email', 'username', 'isVerified', 'createdAt'],
+            attributes: ['id', 'name', 'username', 'createdAt'],
             order: [['createdAt', 'ASC']],
           }),
           User.count({ where: { shopId: shop.id } }),
@@ -32,9 +32,7 @@ exports.listShops = async (req, res, next) => {
             ? {
                 id: owner.id,
                 name: owner.name,
-                email: owner.email,
                 username: owner.username,
-                isVerified: owner.isVerified,
                 createdAt: owner.createdAt,
               }
             : null,

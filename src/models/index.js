@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const { Op } = require('sequelize');
 const sequelize = require('../config/db');
 const Shop = require('./shop');
 const User = require('./user');
@@ -79,34 +80,32 @@ async function backfillShopOwnership(shopId) {
 }
 
 async function ensureSuperAdmin() {
-  const configuredEmail = process.env.SUPERADMIN_EMAIL ? String(process.env.SUPERADMIN_EMAIL).trim().toLowerCase() : '';
   const configuredPassword = process.env.SUPERADMIN_PASSWORD ? String(process.env.SUPERADMIN_PASSWORD) : '';
   const configuredName = process.env.SUPERADMIN_NAME ? String(process.env.SUPERADMIN_NAME).trim() : 'Platform Administrator';
-  const configuredUsername = process.env.SUPERADMIN_USERNAME ? String(process.env.SUPERADMIN_USERNAME).trim() : 'superadmin';
+  const configuredUsername = process.env.SUPERADMIN_USERNAME ? String(process.env.SUPERADMIN_USERNAME).trim().toLowerCase() : 'superadmin';
 
-  if (!configuredEmail) {
+  if (!configuredUsername) {
     return;
   }
 
-  let user = await User.findOne({ where: { email: configuredEmail } });
+  let user = await User.findOne({ where: { shopId: null, username: configuredUsername } });
 
   if (!user) {
     if (!configuredPassword) {
-      console.warn('SUPERADMIN_EMAIL is set but SUPERADMIN_PASSWORD is missing. Skipping super admin bootstrap.');
+      console.warn('SUPERADMIN_USERNAME is set but SUPERADMIN_PASSWORD is missing. Skipping super admin bootstrap.');
       return;
     }
 
     const passwordHash = await bcrypt.hash(configuredPassword, 10);
     const username = await generateUniqueUsername(User, {
       username: configuredUsername,
-      email: configuredEmail,
       name: configuredName,
-    });
+    }, undefined, null);
 
     await User.create({
       name: configuredName,
       username,
-      email: configuredEmail,
+      email: null,
       password: passwordHash,
       role: 'SuperAdmin',
       shopId: null,
@@ -114,7 +113,7 @@ async function ensureSuperAdmin() {
       verificationToken: null,
     });
 
-    console.log(`Bootstrapped super admin account for ${configuredEmail}`);
+    console.log(`Bootstrapped super admin account for ${username}`);
     return;
   }
 
@@ -139,7 +138,7 @@ async function ensureSuperAdmin() {
 
   if (changed) {
     await user.save();
-    console.log(`Updated ${configuredEmail} to SuperAdmin access`);
+    console.log(`Updated ${user.username} to SuperAdmin access`);
   }
 }
 
@@ -148,7 +147,8 @@ async function initAppData() {
 
   await backfillShopOwnership(legacyShop.id);
   await backfillMissingUsernames(User);
-  await User.update({ isVerified: true }, { where: { verificationToken: null } });
+  await User.update({ role: 'Staff' }, { where: { role: { [Op.in]: ['Cashier', 'Manager'] } } });
+  await User.update({ isVerified: true, verificationToken: null }, { where: {} });
 
   const defaultSettings = await Setting.findOne({ where: { shopId: legacyShop.id } });
   if (!defaultSettings) {

@@ -19,24 +19,31 @@ exports.login = async (req, res, next) => {
     const username = normalizeUsername(req.body.username);
     const password = req.body.password;
 
-    if (!shopName || !username || !password) {
-      return res.status(400).json({ message: 'Shop name, username, and password are required' });
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
     }
 
-    const shop = await Shop.findOne({
-      where: {
-        name: {
-          [Op.iLike]: shopName,
+    let shop = null;
+    let user = null;
+
+    if (shopName) {
+      shop = await Shop.findOne({
+        where: {
+          name: {
+            [Op.iLike]: shopName,
+          },
         },
-      },
-      attributes: ['id', 'name', 'slug'],
-    });
+        attributes: ['id', 'name', 'slug'],
+      });
 
-    if (!shop) {
-      return res.status(401).json({ message: 'Invalid shop name, username, or password' });
+      if (!shop) {
+        return res.status(401).json({ message: 'Invalid shop name, username, or password' });
+      }
+
+      user = await User.findOne({ where: { shopId: shop.id, username } });
+    } else {
+      user = await User.findOne({ where: { shopId: null, username, role: 'SuperAdmin' } });
     }
-
-    const user = await User.findOne({ where: { shopId: shop.id, username } });
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid shop name, username, or password' });
@@ -45,6 +52,10 @@ exports.login = async (req, res, next) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return res.status(401).json({ message: 'Invalid shop name, username, or password' });
+    }
+
+    if (!shop && user.shopId) {
+      shop = await Shop.findByPk(user.shopId, { attributes: ['id', 'name', 'slug'] });
     }
 
     const token = signToken(user);

@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const bcrypt = require('bcrypt');
 const sequelize = require('../config/db');
 const Shop = require('./shop');
 const User = require('./user');
@@ -9,7 +10,7 @@ const Sale = require('./sale');
 const SaleItem = require('./saleItem');
 const Receipt = require('./receipt');
 const Setting = require('./setting');
-const { backfillMissingUsernames } = require('../utils/username');
+const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
 Shop.hasMany(User, { foreignKey: 'shopId', as: 'users' });
@@ -111,6 +112,69 @@ async function normalizeUserConstraints() {
   }
 }
 
+async function ensureSuperAdmin() {
+  const configuredPassword = process.env.SUPERADMIN_PASSWORD ? String(process.env.SUPERADMIN_PASSWORD) : '';
+  const configuredName = process.env.SUPERADMIN_NAME ? String(process.env.SUPERADMIN_NAME).trim() : 'Platform Administrator';
+  const configuredUsername = process.env.SUPERADMIN_USERNAME ? String(process.env.SUPERADMIN_USERNAME).trim().toLowerCase() : 'superadmin';
+
+  if (!configuredUsername) {
+    return;
+  }
+
+  let user = await User.findOne({ where: { shopId: null, username: configuredUsername } });
+
+  if (!user) {
+    if (!configuredPassword) {
+      console.warn('SUPERADMIN_USERNAME is set but SUPERADMIN_PASSWORD is missing. Skipping super admin bootstrap.');
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(configuredPassword, 10);
+    const username = await generateUniqueUsername(User, {
+      username: configuredUsername,
+      name: configuredName,
+    }, undefined, null);
+
+    await User.create({
+      name: configuredName,
+      username,
+      email: null,
+      password: passwordHash,
+      role: 'SuperAdmin',
+      shopId: null,
+      isVerified: true,
+      verificationToken: null,
+    });
+
+    console.log(`Bootstrapped super admin account for ${username}`);
+    return;
+  }
+
+  let changed = false;
+
+  if (user.role !== 'SuperAdmin') {
+    user.role = 'SuperAdmin';
+    changed = true;
+  }
+  if (user.shopId !== null) {
+    user.shopId = null;
+    changed = true;
+  }
+  if (!user.isVerified) {
+    user.isVerified = true;
+    changed = true;
+  }
+  if (user.verificationToken !== null) {
+    user.verificationToken = null;
+    changed = true;
+  }
+
+  if (changed) {
+    await user.save();
+    console.log(`Updated ${user.username} to SuperAdmin access`);
+  }
+}
+
 async function initAppData() {
   const legacyShop = await findOrCreateLegacyShop();
 
@@ -143,6 +207,8 @@ async function initAppData() {
       isActive: true,
     });
   }
+
+  await ensureSuperAdmin();
 }
 
 module.exports = {

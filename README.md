@@ -9,14 +9,13 @@ Backend API for StockDesk.
 - Sequelize
 - PostgreSQL
 - JWT authentication
-- Nodemailer email verification
 - PDF receipt generation
 - Thermal printer integration
 
 ## Setup
 
 1. Copy `.env.example` to `.env`
-2. Fill in database, JWT, CORS, and SMTP settings
+2. Fill in database, JWT, CORS, and optional super admin settings
 3. Install dependencies:
    ```bash
    npm install
@@ -65,12 +64,13 @@ Do not set these local fallback variables on Railway unless you intentionally wa
 
 If any of those are set to local values such as `localhost`, the backend will try to connect there and Railway deployment will fail.
 
-Optional for temporary hosting with existing profiles only:
+Optional:
 
 - `CORS_ORIGIN_PATTERNS=https://*.vercel.app`
-- `VERIFY_EMAIL_BASE_URL=https://<your-railway-domain>/api/auth/verify-email`
-- All `SMTP_*` variables
+- `SUPERADMIN_NAME=Platform Administrator`
+- `SUPERADMIN_USERNAME=superadmin`
+- `SUPERADMIN_PASSWORD=<strong-password>`
 
-If you are temporarily hosting with signup disabled on the frontend, SMTP is not required for existing users to sign in.
+If `SUPERADMIN_USERNAME` and `SUPERADMIN_PASSWORD` are set, the backend will create or normalize a shopless `SuperAdmin` account on boot. That account can use the platform shops dashboard.
 
 See `.env.example` for local development defaults.

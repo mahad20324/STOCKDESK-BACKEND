@@ -13,6 +13,9 @@ exports.listUsers = async (req, res, next) => {
     });
     res.json(users);
   } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ message: 'Username is already in use. Choose a different username.' });
+    }
     next(error);
   }
 };
@@ -26,6 +29,9 @@ exports.getUser = async (req, res, next) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ message: 'Username is already in use. Choose a different username.' });
+    }
     next(error);
   }
 };

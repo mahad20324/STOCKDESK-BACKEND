@@ -155,6 +155,9 @@ exports.signup = async (req, res, next) => {
     if (!transaction.finished) {
       await transaction.rollback();
     }
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ message: 'Username is already in use. Choose a different admin username.' });
+    }
     next(error);
   }
 };

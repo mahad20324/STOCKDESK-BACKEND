@@ -79,32 +79,36 @@ async function backfillShopOwnership(shopId) {
 }
 
 async function normalizeUserConstraints() {
-  const [constraints] = await sequelize.query(`
-    SELECT tc.constraint_name, array_agg(kcu.column_name ORDER BY kcu.ordinal_position) AS columns
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_name = kcu.constraint_name
-     AND tc.table_schema = kcu.table_schema
-    WHERE tc.table_schema = 'public'
-      AND tc.table_name = 'users'
-      AND tc.constraint_type = 'UNIQUE'
-    GROUP BY tc.constraint_name
-  `);
+  try {
+    const [constraints] = await sequelize.query(`
+      SELECT tc.constraint_name, array_agg(kcu.column_name ORDER BY kcu.ordinal_position) AS columns
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name
+       AND tc.table_schema = kcu.table_schema
+      WHERE tc.table_schema = 'public'
+        AND tc.table_name = 'users'
+        AND tc.constraint_type = 'UNIQUE'
+      GROUP BY tc.constraint_name
+    `);
 
-  for (const constraint of constraints) {
-    const columns = Array.isArray(constraint.columns) ? constraint.columns : [];
-    const isLegacySingleColumnConstraint =
-      columns.length === 1 && ['username', 'email', 'verificationToken'].includes(columns[0]);
+    for (const constraint of constraints) {
+      const columns = Array.isArray(constraint.columns) ? constraint.columns : [];
+      const isLegacySingleColumnConstraint =
+        columns.length === 1 && ['username', 'email', 'verificationToken'].includes(columns[0]);
 
-    if (isLegacySingleColumnConstraint) {
-      await sequelize.query(`ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "${constraint.constraint_name}"`);
+      if (isLegacySingleColumnConstraint) {
+        await sequelize.query(`ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "${constraint.constraint_name}"`);
+      }
     }
-  }
 
-  await sequelize.query('DROP INDEX IF EXISTS "users_username_key"');
-  await sequelize.query('DROP INDEX IF EXISTS "users_email_key"');
-  await sequelize.query('DROP INDEX IF EXISTS "users_verificationToken_key"');
-  await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "users_shopId_username_unique" ON "users" ("shopId", "username")');
+    await sequelize.query('DROP INDEX IF EXISTS "users_username_key"');
+    await sequelize.query('DROP INDEX IF EXISTS "users_email_key"');
+    await sequelize.query('DROP INDEX IF EXISTS "users_verificationToken_key"');
+    await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "users_shopId_username_unique" ON "users" ("shopId", "username")');
+  } catch (error) {
+    console.warn('Skipping legacy user constraint normalization:', error.message);
+  }
 }
 
 async function initAppData() {

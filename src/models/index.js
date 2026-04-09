@@ -175,22 +175,6 @@ async function ensureSuperAdmin() {
   }
 }
 
-async function normalizeUserDisplayRoles() {
-  await sequelize.query(`
-    UPDATE "users"
-    SET "verificationToken" = CASE
-      WHEN "role" = 'Admin' THEN 'Admin'
-      ELSE COALESCE(NULLIF("verificationToken", ''), 'Cashier')
-    END
-    WHERE "role" <> 'SuperAdmin'
-      AND (
-        "verificationToken" IS NULL
-        OR "verificationToken" = ''
-        OR "verificationToken" NOT IN ('Admin', 'Manager', 'Cashier')
-      )
-  `);
-}
-
 async function initAppData() {
   const legacyShop = await findOrCreateLegacyShop();
 
@@ -199,7 +183,6 @@ async function initAppData() {
   await backfillMissingUsernames(User);
   await User.update({ role: 'Staff' }, { where: { role: { [Op.in]: ['Cashier', 'Manager'] } } });
   await User.update({ isVerified: true }, { where: {} });
-  await normalizeUserDisplayRoles();
 
   const defaultSettings = await Setting.findOne({ where: { shopId: legacyShop.id } });
   if (!defaultSettings) {

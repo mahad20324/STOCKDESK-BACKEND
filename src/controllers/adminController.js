@@ -52,8 +52,8 @@ async function buildShopSnapshots() {
                 id: lastActiveUser.id,
                 name: lastActiveUser.name,
                 username: lastActiveUser.username,
-                role: ['Admin', 'Manager', 'Cashier'].includes(lastActiveUser.verificationToken)
-                  ? lastActiveUser.verificationToken
+                role: typeof lastActiveUser.verificationToken === 'string' && ['Admin', 'Manager', 'Cashier'].includes(lastActiveUser.verificationToken.split(':', 1)[0])
+                  ? lastActiveUser.verificationToken.split(':', 1)[0]
                   : lastActiveUser.role,
               }
             : null,

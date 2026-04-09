@@ -5,8 +5,12 @@ const { normalizeUsername } = require('../utils/username');
 const MANAGEABLE_DISPLAY_ROLES = ['Admin', 'Manager', 'Cashier'];
 
 function toDisplayRole(user) {
-  return ['Admin', 'Manager', 'Cashier'].includes(user.verificationToken)
-    ? user.verificationToken
+  const tokenPrefix = typeof user.verificationToken === 'string'
+    ? user.verificationToken.split(':', 1)[0]
+    : null;
+
+  return ['Admin', 'Manager', 'Cashier'].includes(tokenPrefix)
+    ? tokenPrefix
     : (user.role === 'Admin' ? 'Admin' : 'Cashier');
 }
 
@@ -90,8 +94,11 @@ exports.createUser = async (req, res, next) => {
       role: toAccessRole(displayRole),
       shopId: req.user.shopId,
       isVerified: true,
-      verificationToken: displayRole,
+      verificationToken: null,
     });
+
+    user.verificationToken = `${displayRole}:${user.id}`;
+    await user.save();
 
     // Return plaintext password to admin only (visible in response)
     res.status(201).json({
@@ -143,7 +150,7 @@ exports.updateUser = async (req, res, next) => {
         return res.status(400).json({ message: 'Invalid role selected' });
       }
       user.role = toAccessRole(nextDisplayRole);
-      user.verificationToken = nextDisplayRole;
+      user.verificationToken = `${nextDisplayRole}:${user.id}`;
     }
     await user.save();
 

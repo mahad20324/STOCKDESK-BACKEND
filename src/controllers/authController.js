@@ -10,8 +10,12 @@ function getDisplayRole(user) {
     return 'SuperAdmin';
   }
 
-  return ['Admin', 'Manager', 'Cashier'].includes(user.verificationToken)
-    ? user.verificationToken
+  const tokenPrefix = typeof user.verificationToken === 'string'
+    ? user.verificationToken.split(':', 1)[0]
+    : null;
+
+  return ['Admin', 'Manager', 'Cashier'].includes(tokenPrefix)
+    ? tokenPrefix
     : user.role === 'Admin'
       ? 'Admin'
       : 'Cashier';
@@ -164,10 +168,13 @@ exports.signup = async (req, res, next) => {
         role: 'Admin',
         shopId: shop.id,
         isVerified: true,
-        verificationToken: 'Admin',
+        verificationToken: null,
       },
       { transaction }
     );
+
+    user.verificationToken = `Admin:${user.id}`;
+    await user.save({ transaction });
 
     await transaction.commit();
 

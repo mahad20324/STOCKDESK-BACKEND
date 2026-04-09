@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { Shop, User, Setting, ShopActivity, sequelize } = require('../models');
+const { Shop, User, UserProfile, Setting, ShopActivity, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { normalizeUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
@@ -40,9 +40,9 @@ exports.login = async (req, res, next) => {
         return res.status(401).json({ message: 'Invalid shop name, username, or password' });
       }
 
-      user = await User.findOne({ where: { shopId: shop.id, username } });
+      user = await User.findOne({ where: { shopId: shop.id, username }, include: [{ model: UserProfile, as: 'profile', required: false }] });
     } else {
-      user = await User.findOne({ where: { shopId: null, username, role: 'SuperAdmin' } });
+      user = await User.findOne({ where: { shopId: null, username, role: 'SuperAdmin' }, include: [{ model: UserProfile, as: 'profile', required: false }] });
     }
 
     if (!user) {
@@ -74,6 +74,7 @@ exports.login = async (req, res, next) => {
         name: user.name,
         username: user.username,
         role: user.role,
+        displayRole: user.profile?.displayRole || user.role,
         shopId: user.shopId,
         shop,
       },
@@ -158,6 +159,14 @@ exports.signup = async (req, res, next) => {
         shopId: shop.id,
         isVerified: true,
         verificationToken: null,
+      },
+      { transaction }
+    );
+
+    await UserProfile.create(
+      {
+        userId: user.id,
+        displayRole: 'Admin',
       },
       { transaction }
     );

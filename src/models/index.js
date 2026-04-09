@@ -11,6 +11,7 @@ const SaleItem = require('./saleItem');
 const Receipt = require('./receipt');
 const Setting = require('./setting');
 const ShopActivity = require('./shopActivity');
+const UserProfile = require('./userProfile');
 const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
@@ -40,6 +41,9 @@ Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 Shop.hasOne(ShopActivity, { foreignKey: 'shopId', as: 'activityLog' });
 ShopActivity.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+
+User.hasOne(UserProfile, { foreignKey: 'userId', as: 'profile' });
+UserProfile.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 User.hasMany(ShopActivity, { foreignKey: 'lastActiveUserId', as: 'activityEvents' });
 ShopActivity.belongsTo(User, { foreignKey: 'lastActiveUserId', as: 'lastActiveUser' });
@@ -182,6 +186,18 @@ async function ensureSuperAdmin() {
   }
 }
 
+async function backfillUserProfiles() {
+  const users = await User.findAll({ attributes: ['id', 'role'], where: { role: { [Op.ne]: 'SuperAdmin' } } });
+
+  for (const user of users) {
+    const displayRole = user.role === 'Admin' ? 'Admin' : 'Cashier';
+    await UserProfile.findOrCreate({
+      where: { userId: user.id },
+      defaults: { displayRole },
+    });
+  }
+}
+
 async function initAppData() {
   const legacyShop = await findOrCreateLegacyShop();
 
@@ -190,6 +206,7 @@ async function initAppData() {
   await backfillMissingUsernames(User);
   await User.update({ role: 'Staff' }, { where: { role: { [Op.in]: ['Cashier', 'Manager'] } } });
   await User.update({ isVerified: true, verificationToken: null }, { where: {} });
+  await backfillUserProfiles();
 
   const defaultSettings = await Setting.findOne({ where: { shopId: legacyShop.id } });
   if (!defaultSettings) {
@@ -230,5 +247,6 @@ module.exports = {
   Receipt,
   Setting,
   ShopActivity,
+  UserProfile,
   initAppData,
 };

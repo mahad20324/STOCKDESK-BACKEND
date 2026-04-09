@@ -1,17 +1,34 @@
 const bcrypt = require('bcrypt');
-const { User } = require('../models');
+const { User, UserProfile } = require('../models');
 const { normalizeUsername } = require('../utils/username');
 
-const MANAGEABLE_SHOP_ROLES = ['Admin', 'Staff'];
+const MANAGEABLE_DISPLAY_ROLES = ['Admin', 'Manager', 'Cashier'];
+
+function toDisplayRole(user) {
+  return user.profile?.displayRole || (user.role === 'Admin' ? 'Admin' : 'Cashier');
+}
+
+function toAccessRole(displayRole) {
+  return displayRole === 'Admin' ? 'Admin' : 'Staff';
+}
 
 exports.listUsers = async (req, res, next) => {
   try {
     const users = await User.findAll({
       where: { shopId: req.user.shopId },
       attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
+      include: [{ model: UserProfile, as: 'profile', attributes: ['displayRole'], required: false }],
       order: [['createdAt', 'ASC']],
     });
-    res.json(users);
+    res.json(users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      displayRole: toDisplayRole(user),
+      createdAt: user.createdAt,
+      shopId: user.shopId,
+    })));
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
       return res.status(409).json({ message: 'Username is already in use. Choose a different username.' });
@@ -25,9 +42,18 @@ exports.getUser = async (req, res, next) => {
     const user = await User.findOne({
       where: { id: req.params.id, shopId: req.user.shopId },
       attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
+      include: [{ model: UserProfile, as: 'profile', attributes: ['displayRole'], required: false }],
     });
     if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json(user);
+    res.json({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      displayRole: toDisplayRole(user),
+      createdAt: user.createdAt,
+      shopId: user.shopId,
+    });
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
       return res.status(409).json({ message: 'Username is already in use. Choose a different username.' });
@@ -38,18 +64,15 @@ exports.getUser = async (req, res, next) => {
 
 exports.createUser = async (req, res, next) => {
   try {
+    const name = req.body.name ? String(req.body.name).trim() : '';
     const username = normalizeUsername(req.body.username);
     const password = req.body.password ? String(req.body.password) : '';
-    const confirmPassword = req.body.confirmPassword ? String(req.body.confirmPassword) : '';
-    const role = req.body.role || 'Staff';
+    const displayRole = req.body.displayRole || req.body.role || 'Cashier';
 
-    if (!username || !password || !confirmPassword) {
-      return res.status(400).json({ message: 'Username, password, and confirm password are required' });
+    if (!name || !username || !password) {
+      return res.status(400).json({ message: 'Name, username, and password are required' });
     }
-    if (password !== confirmPassword) {
-      return res.status(400).json({ message: 'Passwords do not match' });
-    }
-    if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
+    if (!MANAGEABLE_DISPLAY_ROLES.includes(displayRole)) {
       return res.status(400).json({ message: 'Invalid role selected' });
     }
 
@@ -60,21 +83,28 @@ exports.createUser = async (req, res, next) => {
 
     const hash = await bcrypt.hash(password, 10);
     const user = await User.create({
-      name: username,
+      name,
       username,
       email: null,
       password: hash,
-      role,
+      role: toAccessRole(displayRole),
       shopId: req.user.shopId,
       isVerified: true,
       verificationToken: null,
     });
+
+    await UserProfile.create({
+      userId: user.id,
+      displayRole,
+    });
+
     // Return plaintext password to admin only (visible in response)
     res.status(201).json({
       id: user.id,
       name: user.name,
       username: user.username,
       role: user.role,
+      displayRole,
       shopId: user.shopId,
       plainPassword: password,
     });
@@ -88,7 +118,7 @@ exports.updateUser = async (req, res, next) => {
     const user = await User.findOne({ where: { id: req.params.id, shopId: req.user.shopId } });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const { username, role } = req.body;
+    const { name, username, displayRole, role } = req.body;
     if (username !== undefined) {
       const normalizedUsername = normalizeUsername(username);
       if (!normalizedUsername) {
@@ -104,17 +134,33 @@ exports.updateUser = async (req, res, next) => {
         return res.status(409).json({ message: 'Username is already in use for this shop' });
       }
       user.username = normalizedUsername;
-      user.name = normalizedUsername;
     }
-    if (role) {
-      if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
+    if (name !== undefined) {
+      const normalizedName = String(name).trim();
+      if (!normalizedName) {
+        return res.status(400).json({ message: 'Name is required' });
+      }
+      user.name = normalizedName;
+    }
+    const nextDisplayRole = displayRole || role;
+    if (nextDisplayRole) {
+      if (!MANAGEABLE_DISPLAY_ROLES.includes(nextDisplayRole)) {
         return res.status(400).json({ message: 'Invalid role selected' });
       }
-      user.role = role;
+      user.role = toAccessRole(nextDisplayRole);
     }
     await user.save();
 
-    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, shopId: user.shopId });
+    const [profile] = await UserProfile.findOrCreate({
+      where: { userId: user.id },
+      defaults: { displayRole: user.role === 'Admin' ? 'Admin' : 'Cashier' },
+    });
+    if (nextDisplayRole) {
+      profile.displayRole = nextDisplayRole;
+      await profile.save();
+    }
+
+    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, displayRole: profile.displayRole, shopId: user.shopId });
   } catch (error) {
     next(error);
   }

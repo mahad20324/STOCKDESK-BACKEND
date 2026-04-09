@@ -10,8 +10,6 @@ const Sale = require('./sale');
 const SaleItem = require('./saleItem');
 const Receipt = require('./receipt');
 const Setting = require('./setting');
-const ShopActivity = require('./shopActivity');
-const UserProfile = require('./userProfile');
 const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
@@ -38,15 +36,6 @@ Receipt.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
 Shop.hasOne(Setting, { foreignKey: 'shopId', as: 'settings' });
 Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
-
-Shop.hasOne(ShopActivity, { foreignKey: 'shopId', as: 'activityLog' });
-ShopActivity.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
-
-User.hasOne(UserProfile, { foreignKey: 'userId', as: 'profile' });
-UserProfile.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-
-User.hasMany(ShopActivity, { foreignKey: 'lastActiveUserId', as: 'activityEvents' });
-ShopActivity.belongsTo(User, { foreignKey: 'lastActiveUserId', as: 'lastActiveUser' });
 
 User.hasMany(Sale, { foreignKey: 'cashierId', as: 'sales' });
 Sale.belongsTo(User, { foreignKey: 'cashierId', as: 'cashier' });
@@ -186,16 +175,20 @@ async function ensureSuperAdmin() {
   }
 }
 
-async function backfillUserProfiles() {
-  const users = await User.findAll({ attributes: ['id', 'role'], where: { role: { [Op.ne]: 'SuperAdmin' } } });
-
-  for (const user of users) {
-    const displayRole = user.role === 'Admin' ? 'Admin' : 'Cashier';
-    await UserProfile.findOrCreate({
-      where: { userId: user.id },
-      defaults: { displayRole },
-    });
-  }
+async function normalizeUserDisplayRoles() {
+  await sequelize.query(`
+    UPDATE "users"
+    SET "verificationToken" = CASE
+      WHEN "role" = 'Admin' THEN 'Admin'
+      ELSE COALESCE(NULLIF("verificationToken", ''), 'Cashier')
+    END
+    WHERE "role" <> 'SuperAdmin'
+      AND (
+        "verificationToken" IS NULL
+        OR "verificationToken" = ''
+        OR "verificationToken" NOT IN ('Admin', 'Manager', 'Cashier')
+      )
+  `);
 }
 
 async function initAppData() {
@@ -205,8 +198,8 @@ async function initAppData() {
   await normalizeUserConstraints();
   await backfillMissingUsernames(User);
   await User.update({ role: 'Staff' }, { where: { role: { [Op.in]: ['Cashier', 'Manager'] } } });
-  await User.update({ isVerified: true, verificationToken: null }, { where: {} });
-  await backfillUserProfiles();
+  await User.update({ isVerified: true }, { where: {} });
+  await normalizeUserDisplayRoles();
 
   const defaultSettings = await Setting.findOne({ where: { shopId: legacyShop.id } });
   if (!defaultSettings) {
@@ -246,7 +239,5 @@ module.exports = {
   SaleItem,
   Receipt,
   Setting,
-  ShopActivity,
-  UserProfile,
   initAppData,
 };

@@ -1,11 +1,13 @@
 const bcrypt = require('bcrypt');
-const { User, UserProfile } = require('../models');
+const { User } = require('../models');
 const { normalizeUsername } = require('../utils/username');
 
 const MANAGEABLE_DISPLAY_ROLES = ['Admin', 'Manager', 'Cashier'];
 
 function toDisplayRole(user) {
-  return user.profile?.displayRole || (user.role === 'Admin' ? 'Admin' : 'Cashier');
+  return ['Admin', 'Manager', 'Cashier'].includes(user.verificationToken)
+    ? user.verificationToken
+    : (user.role === 'Admin' ? 'Admin' : 'Cashier');
 }
 
 function toAccessRole(displayRole) {
@@ -17,7 +19,6 @@ exports.listUsers = async (req, res, next) => {
     const users = await User.findAll({
       where: { shopId: req.user.shopId },
       attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
-      include: [{ model: UserProfile, as: 'profile', attributes: ['displayRole'], required: false }],
       order: [['createdAt', 'ASC']],
     });
     res.json(users.map((user) => ({
@@ -42,7 +43,6 @@ exports.getUser = async (req, res, next) => {
     const user = await User.findOne({
       where: { id: req.params.id, shopId: req.user.shopId },
       attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
-      include: [{ model: UserProfile, as: 'profile', attributes: ['displayRole'], required: false }],
     });
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({
@@ -90,12 +90,7 @@ exports.createUser = async (req, res, next) => {
       role: toAccessRole(displayRole),
       shopId: req.user.shopId,
       isVerified: true,
-      verificationToken: null,
-    });
-
-    await UserProfile.create({
-      userId: user.id,
-      displayRole,
+      verificationToken: displayRole,
     });
 
     // Return plaintext password to admin only (visible in response)
@@ -148,19 +143,11 @@ exports.updateUser = async (req, res, next) => {
         return res.status(400).json({ message: 'Invalid role selected' });
       }
       user.role = toAccessRole(nextDisplayRole);
+      user.verificationToken = nextDisplayRole;
     }
     await user.save();
 
-    const [profile] = await UserProfile.findOrCreate({
-      where: { userId: user.id },
-      defaults: { displayRole: user.role === 'Admin' ? 'Admin' : 'Cashier' },
-    });
-    if (nextDisplayRole) {
-      profile.displayRole = nextDisplayRole;
-      await profile.save();
-    }
-
-    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, displayRole: profile.displayRole, shopId: user.shopId });
+    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, displayRole: toDisplayRole(user), shopId: user.shopId });
   } catch (error) {
     next(error);
   }

@@ -1,42 +1,31 @@
-const { Setting, Shop, ShopActivity, User } = require('../models');
+const { Setting, Shop, User } = require('../models');
 
 const ACTIVE_WINDOW_HOURS = 24;
 
 async function buildShopSnapshots() {
   const shops = await Shop.findAll({
     attributes: ['id', 'name', 'slug', 'isActive', 'createdAt'],
-    include: [
-      { model: Setting, as: 'settings', attributes: ['currency'], required: false },
-      {
-        model: ShopActivity,
-        as: 'activityLog',
-        attributes: ['lastLoginAt', 'lastActiveUserId'],
-        required: false,
-        include: [
-          {
-            model: User,
-            as: 'lastActiveUser',
-            attributes: ['id', 'name', 'username', 'role'],
-            required: false,
-          },
-        ],
-      },
-    ],
+    include: [{ model: Setting, as: 'settings', attributes: ['currency'], required: false }],
     order: [['createdAt', 'DESC']],
   });
 
   return Promise.all(
     shops.map(async (shop) => {
-      const [owner, userCount] = await Promise.all([
+      const [owner, userCount, lastActiveUser] = await Promise.all([
         User.findOne({
           where: { shopId: shop.id, role: 'Admin' },
           attributes: ['id', 'name', 'username', 'createdAt'],
           order: [['createdAt', 'ASC']],
         }),
         User.count({ where: { shopId: shop.id } }),
+        User.findOne({
+          where: { shopId: shop.id },
+          attributes: ['id', 'name', 'username', 'role', 'verificationToken', 'updatedAt'],
+          order: [['updatedAt', 'DESC']],
+        }),
       ]);
 
-      const lastLoginAt = shop.activityLog?.lastLoginAt || null;
+      const lastLoginAt = lastActiveUser?.updatedAt || null;
 
       return {
         id: shop.id,
@@ -58,12 +47,14 @@ async function buildShopSnapshots() {
         },
         activity: {
           lastLoginAt,
-          lastActiveUser: shop.activityLog?.lastActiveUser
+          lastActiveUser: lastActiveUser
             ? {
-                id: shop.activityLog.lastActiveUser.id,
-                name: shop.activityLog.lastActiveUser.name,
-                username: shop.activityLog.lastActiveUser.username,
-                role: shop.activityLog.lastActiveUser.role,
+                id: lastActiveUser.id,
+                name: lastActiveUser.name,
+                username: lastActiveUser.username,
+                role: ['Admin', 'Manager', 'Cashier'].includes(lastActiveUser.verificationToken)
+                  ? lastActiveUser.verificationToken
+                  : lastActiveUser.role,
               }
             : null,
         },

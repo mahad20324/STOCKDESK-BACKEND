@@ -1,9 +1,21 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { Shop, User, UserProfile, Setting, ShopActivity, sequelize } = require('../models');
+const { Shop, User, Setting, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { normalizeUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
+
+function getDisplayRole(user) {
+  if (user.role === 'SuperAdmin') {
+    return 'SuperAdmin';
+  }
+
+  return ['Admin', 'Manager', 'Cashier'].includes(user.verificationToken)
+    ? user.verificationToken
+    : user.role === 'Admin'
+      ? 'Admin'
+      : 'Cashier';
+}
 
 function signToken(user) {
   return jwt.sign(
@@ -40,9 +52,9 @@ exports.login = async (req, res, next) => {
         return res.status(401).json({ message: 'Invalid shop name, username, or password' });
       }
 
-      user = await User.findOne({ where: { shopId: shop.id, username }, include: [{ model: UserProfile, as: 'profile', required: false }] });
+      user = await User.findOne({ where: { shopId: shop.id, username } });
     } else {
-      user = await User.findOne({ where: { shopId: null, username, role: 'SuperAdmin' }, include: [{ model: UserProfile, as: 'profile', required: false }] });
+      user = await User.findOne({ where: { shopId: null, username, role: 'SuperAdmin' } });
     }
 
     if (!user) {
@@ -54,13 +66,7 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid shop name, username, or password' });
     }
 
-    if (user.shopId) {
-      await ShopActivity.upsert({
-        shopId: user.shopId,
-        lastLoginAt: new Date(),
-        lastActiveUserId: user.id,
-      });
-    }
+    await User.update({ updatedAt: new Date() }, { where: { id: user.id } });
 
     if (!shop && user.shopId) {
       shop = await Shop.findByPk(user.shopId, { attributes: ['id', 'name', 'slug'] });
@@ -74,7 +80,7 @@ exports.login = async (req, res, next) => {
         name: user.name,
         username: user.username,
         role: user.role,
-        displayRole: user.profile?.displayRole || user.role,
+        displayRole: getDisplayRole(user),
         shopId: user.shopId,
         shop,
       },
@@ -158,15 +164,7 @@ exports.signup = async (req, res, next) => {
         role: 'Admin',
         shopId: shop.id,
         isVerified: true,
-        verificationToken: null,
-      },
-      { transaction }
-    );
-
-    await UserProfile.create(
-      {
-        userId: user.id,
-        displayRole: 'Admin',
+        verificationToken: 'Admin',
       },
       { transaction }
     );

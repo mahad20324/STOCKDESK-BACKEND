@@ -97,15 +97,23 @@ async function backfillShopOwnership(shopId) {
 async function normalizeUserConstraints() {
   try {
     const [constraints] = await sequelize.query(`
-      SELECT tc.constraint_name, array_agg(kcu.column_name ORDER BY kcu.ordinal_position) AS columns
-      FROM information_schema.table_constraints tc
-      JOIN information_schema.key_column_usage kcu
-        ON tc.constraint_name = kcu.constraint_name
-       AND tc.table_schema = kcu.table_schema
-      WHERE tc.table_schema = 'public'
-        AND tc.table_name = 'users'
-        AND tc.constraint_type = 'UNIQUE'
-      GROUP BY tc.constraint_name
+      SELECT
+        con.conname AS "constraintName",
+        array_agg(att.attname ORDER BY cols.ordinality) AS columns
+      FROM pg_constraint con
+      JOIN pg_class tbl
+        ON tbl.oid = con.conrelid
+      JOIN pg_namespace ns
+        ON ns.oid = tbl.relnamespace
+      JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS cols(attnum, ordinality)
+        ON TRUE
+      JOIN pg_attribute att
+        ON att.attrelid = tbl.oid
+       AND att.attnum = cols.attnum
+      WHERE ns.nspname = 'public'
+        AND tbl.relname = 'users'
+        AND con.contype = 'u'
+      GROUP BY con.conname
     `);
 
     for (const constraint of constraints) {
@@ -114,13 +122,46 @@ async function normalizeUserConstraints() {
         columns.length === 1 && ['username', 'email', 'verificationToken'].includes(columns[0]);
 
       if (isLegacySingleColumnConstraint) {
-        await sequelize.query(`ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "${constraint.constraint_name}"`);
+        await sequelize.query(`ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "${constraint.constraintName}"`);
       }
     }
 
-    await sequelize.query('DROP INDEX IF EXISTS "users_username_key"');
-    await sequelize.query('DROP INDEX IF EXISTS "users_email_key"');
-    await sequelize.query('DROP INDEX IF EXISTS "users_verificationToken_key"');
+    const [standaloneIndexes] = await sequelize.query(`
+      SELECT idx.indexname AS "indexName"
+      FROM pg_indexes idx
+      JOIN pg_class index_class
+        ON index_class.relname = idx.indexname
+      JOIN pg_namespace index_ns
+        ON index_ns.oid = index_class.relnamespace
+       AND index_ns.nspname = idx.schemaname
+      JOIN pg_class table_class
+        ON table_class.relname = idx.tablename
+      JOIN pg_namespace table_ns
+        ON table_ns.oid = table_class.relnamespace
+       AND table_ns.nspname = idx.schemaname
+      JOIN pg_index index_data
+        ON index_data.indexrelid = index_class.oid
+       AND index_data.indrelid = table_class.oid
+      JOIN LATERAL unnest(index_data.indkey) WITH ORDINALITY AS cols(attnum, ordinality)
+        ON cols.attnum > 0
+      JOIN pg_attribute att
+        ON att.attrelid = table_class.oid
+       AND att.attnum = cols.attnum
+      LEFT JOIN pg_constraint con
+        ON con.conindid = index_class.oid
+      WHERE idx.schemaname = 'public'
+        AND idx.tablename = 'users'
+        AND index_data.indisunique
+      GROUP BY idx.indexname, con.oid
+      HAVING con.oid IS NULL
+         AND count(*) = 1
+         AND max(att.attname) IN ('username', 'email', 'verificationToken')
+    `);
+
+    for (const index of standaloneIndexes) {
+      await sequelize.query(`DROP INDEX IF EXISTS "${index.indexName}"`);
+    }
+
     await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "users_shopId_username_unique" ON "users" ("shopId", "username")');
   } catch (error) {
     console.warn('Skipping legacy user constraint normalization:', error.message);

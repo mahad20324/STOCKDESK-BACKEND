@@ -30,6 +30,7 @@ Backend API for StockDesk.
 - `npm start` — run the API
 - `npm run dev` — run with nodemon
 - `npm run sync` — run DB sync utility
+- `npm run print-bridge` — run the local printer bridge for in-store ESC/POS printing
 
 ## Health Check
 
@@ -89,5 +90,15 @@ Auth endpoints are rate limited in-process:
 
 - `POST /api/auth/login` — 10 requests per 15 minutes per client IP
 - `POST /api/auth/signup` — 5 requests per hour per client IP
+
+## Local Printer Bridge
+
+Use the local printer bridge when the POS frontend is running on a shop device but the main backend is hosted on Railway.
+
+- Start locally with `npm run print-bridge`
+- Point the frontend printer base to the bridge with `VITE_PRINTER_API_URL=http://<local-ip>:4100`
+- Use `VITE_PRINTER_BRIDGE_KEY` and `PRINTER_BRIDGE_KEY` if you want a shared secret between the frontend and bridge
+
+See `bridge/README.md` for details.
 
 See `.env.example` for local development defaults.

@@ -9,6 +9,7 @@ const Product = require('./product');
 const Sale = require('./sale');
 const SaleItem = require('./saleItem');
 const Receipt = require('./receipt');
+const ShopActivity = require('./shopActivity');
 const Setting = require('./setting');
 const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
@@ -37,8 +38,14 @@ Receipt.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 Shop.hasOne(Setting, { foreignKey: 'shopId', as: 'settings' });
 Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
 
+Shop.hasOne(ShopActivity, { foreignKey: 'shopId', as: 'activity' });
+ShopActivity.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+
 User.hasMany(Sale, { foreignKey: 'cashierId', as: 'sales' });
 Sale.belongsTo(User, { foreignKey: 'cashierId', as: 'cashier' });
+
+User.hasMany(ShopActivity, { foreignKey: 'lastActiveUserId', as: 'shopActivityEntries' });
+ShopActivity.belongsTo(User, { foreignKey: 'lastActiveUserId', as: 'lastActiveUser' });
 
 User.hasMany(DayClosure, { foreignKey: 'closedByUserId', as: 'closedDays' });
 DayClosure.belongsTo(User, { foreignKey: 'closedByUserId', as: 'closedBy' });
@@ -69,7 +76,15 @@ async function findOrCreateLegacyShop() {
 }
 
 async function backfillShopOwnership(shopId) {
-  await User.update({ shopId }, { where: { shopId: null } });
+  await User.update(
+    { shopId },
+    {
+      where: {
+        shopId: null,
+        role: { [Op.ne]: 'SuperAdmin' },
+      },
+    }
+  );
   await Customer.update({ shopId }, { where: { shopId: null } });
   await DayClosure.update({ shopId }, { where: { shopId: null } });
   await Product.update({ shopId }, { where: { shopId: null } });
@@ -128,12 +143,20 @@ async function ensureSuperAdmin() {
       const conflictingUser = await User.findOne({ where: { username: configuredUsername } });
 
       if (conflictingUser) {
-        console.warn(
-          `SUPERADMIN_USERNAME "${configuredUsername}" already belongs to a shop user. Choose a unique owner username in Railway variables. Skipping super admin bootstrap.`
-        );
-        return;
-      }
+        if (conflictingUser.role === 'SuperAdmin') {
+          user = conflictingUser;
+        } else {
+          const location = conflictingUser.shopId === null ? 'shopless account' : `shopId ${conflictingUser.shopId}`;
 
+          console.warn(
+            `SUPERADMIN_USERNAME "${configuredUsername}" already matches user ${conflictingUser.id} (${conflictingUser.role}, ${location}). Choose a unique owner username in Railway variables. Skipping super admin bootstrap.`
+          );
+          return;
+        }
+      }
+    }
+
+    if (!user) {
       if (!configuredPassword) {
         console.warn('SUPERADMIN_USERNAME is set but SUPERADMIN_PASSWORD is missing. Skipping super admin bootstrap.');
         return;
@@ -234,6 +257,7 @@ module.exports = {
   Sale,
   SaleItem,
   Receipt,
+  ShopActivity,
   Setting,
   initAppData,
 };

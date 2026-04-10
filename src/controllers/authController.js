@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { Shop, User, Setting, sequelize } = require('../models');
+const { Shop, ShopActivity, User, Setting, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { normalizeUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
@@ -27,6 +27,22 @@ function signToken(user) {
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
+}
+
+async function recordShopLoginActivity(user, occurredAt) {
+  if (!user.shopId) {
+    return;
+  }
+
+  try {
+    await ShopActivity.upsert({
+      shopId: user.shopId,
+      lastLoginAt: occurredAt,
+      lastActiveUserId: user.id,
+    });
+  } catch (error) {
+    console.warn(`Unable to persist shop login activity for shop ${user.shopId}:`, error.message);
+  }
 }
 
 exports.login = async (req, res, next) => {
@@ -70,7 +86,9 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid shop name, username, or password' });
     }
 
-    await User.update({ updatedAt: new Date() }, { where: { id: user.id } });
+    const loginTimestamp = new Date();
+    await User.update({ updatedAt: loginTimestamp }, { where: { id: user.id } });
+    await recordShopLoginActivity(user, loginTimestamp);
 
     if (!shop && user.shopId) {
       shop = await Shop.findByPk(user.shopId, { attributes: ['id', 'name', 'slug'] });

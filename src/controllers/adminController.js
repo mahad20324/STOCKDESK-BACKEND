@@ -1,17 +1,49 @@
-const { Setting, Shop, User } = require('../models');
+const { Setting, Shop, ShopActivity, User } = require('../models');
 
 const ACTIVE_WINDOW_HOURS = 24;
+
+function getDisplayRole(user) {
+  if (!user) {
+    return null;
+  }
+
+  const tokenPrefix = typeof user.verificationToken === 'string'
+    ? user.verificationToken.split(':', 1)[0]
+    : null;
+
+  return ['Admin', 'Manager', 'Cashier'].includes(tokenPrefix)
+    ? tokenPrefix
+    : (user.role === 'Admin' ? 'Admin' : user.role);
+}
 
 async function buildShopSnapshots() {
   const shops = await Shop.findAll({
     attributes: ['id', 'name', 'slug', 'isActive', 'createdAt'],
-    include: [{ model: Setting, as: 'settings', attributes: ['currency'], required: false }],
+    include: [
+      { model: Setting, as: 'settings', attributes: ['currency'], required: false },
+      { model: ShopActivity, as: 'activity', attributes: ['lastLoginAt', 'lastActiveUserId'], required: false },
+    ],
     order: [['createdAt', 'DESC']],
   });
 
+  const lastActiveUserIds = [...new Set(
+    shops
+      .map((shop) => shop.activity?.lastActiveUserId)
+      .filter(Boolean)
+  )];
+
+  const lastActiveUsers = lastActiveUserIds.length > 0
+    ? await User.findAll({
+        where: { id: lastActiveUserIds },
+        attributes: ['id', 'name', 'username', 'role', 'verificationToken'],
+      })
+    : [];
+
+  const lastActiveUserMap = new Map(lastActiveUsers.map((user) => [user.id, user]));
+
   return Promise.all(
     shops.map(async (shop) => {
-      const [owner, userCount, lastActiveUser] = await Promise.all([
+      const [owner, userCount, lastFallbackUser] = await Promise.all([
         User.findOne({
           where: { shopId: shop.id, role: 'Admin' },
           attributes: ['id', 'name', 'username', 'createdAt'],
@@ -25,7 +57,8 @@ async function buildShopSnapshots() {
         }),
       ]);
 
-      const lastLoginAt = lastActiveUser?.updatedAt || null;
+      const lastActiveUser = lastActiveUserMap.get(shop.activity?.lastActiveUserId) || lastFallbackUser || null;
+      const lastLoginAt = shop.activity?.lastLoginAt || lastFallbackUser?.updatedAt || null;
 
       return {
         id: shop.id,
@@ -52,9 +85,7 @@ async function buildShopSnapshots() {
                 id: lastActiveUser.id,
                 name: lastActiveUser.name,
                 username: lastActiveUser.username,
-                role: typeof lastActiveUser.verificationToken === 'string' && ['Admin', 'Manager', 'Cashier'].includes(lastActiveUser.verificationToken.split(':', 1)[0])
-                  ? lastActiveUser.verificationToken.split(':', 1)[0]
-                  : lastActiveUser.role,
+                role: getDisplayRole(lastActiveUser),
               }
             : null,
         },

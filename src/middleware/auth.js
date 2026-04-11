@@ -18,6 +18,14 @@ exports.authenticate = async (req, res, next) => {
     req.user = { id: user.id, role: user.role, name: user.name, username: user.username, shopId: user.shopId };
     next();
   } catch (error) {
-    res.status(401).json({ message: 'Authentication failed' });
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
+
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token.' });
+    }
+
+    return res.status(401).json({ error: 'Authentication failed.' });
   }
 };

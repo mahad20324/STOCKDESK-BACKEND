@@ -51,6 +51,11 @@ Required:
 - `JWT_SECRET`
 - `CORS_ORIGINS=https://<your-vercel-domain>`
 
+Session behavior:
+
+- JWT access tokens expire after 30 minutes
+- expired tokens return `401 Unauthorized` with `Session expired. Please log in again.`
+
 Recommended:
 
 - `SUPERADMIN_NAME=Platform Administrator`

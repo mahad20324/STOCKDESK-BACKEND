@@ -9,7 +9,7 @@ function signToken(user) {
   return jwt.sign(
     { id: user.id, role: user.role, shopId: user.shopId },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '7d' }
+    { expiresIn: process.env.JWT_EXPIRE || '30m' }
   );
 }
 

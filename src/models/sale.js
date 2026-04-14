@@ -28,7 +28,7 @@ Sale.init(
       allowNull: true,
     },
     paymentMethod: {
-      type: DataTypes.STRING(50),
+      type: DataTypes.ENUM('Cash', 'Card', 'Mobile Money', 'Split'),
       allowNull: false,
     },
     paymentSplits: {

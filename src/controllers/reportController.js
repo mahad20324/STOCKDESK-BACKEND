@@ -1,4 +1,4 @@
-const { Sale, SaleItem, Product, User } = require('../models');
+const { Sale, SaleItem, Product, User, Expense, Customer } = require('../models');
 const { fn, col, Op } = require('sequelize');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getMetricsForRange } = require('../utils/businessMetrics');
 
@@ -136,4 +136,42 @@ exports.salesByCashier = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+exports.rangeReport = async (req, res, next) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ message: 'start and end query params required' });
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    endDate.setHours(23, 59, 59, 999);
+    const metrics = await getMetricsForRange(req.user.shopId, startDate, endDate);
+    const sales = await Sale.findAll({
+      where: { shopId: req.user.shopId, createdAt: { [Op.between]: [startDate, endDate] } },
+      include: [
+        { model: User, as: 'cashier', attributes: ['id', 'name'] },
+        { model: Customer, as: 'customer', attributes: ['id', 'name'] },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+    const expenseRows = await Expense.findAll({
+      where: { shopId: req.user.shopId, date: { [Op.between]: [start, end] } },
+    });
+    const totalExpenses = expenseRows.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    res.json({ metrics, sales, totalExpenses, start, end });
+  } catch (err) { next(err); }
+};
+
+exports.customerSales = async (req, res, next) => {
+  try {
+    const sales = await Sale.findAll({
+      where: { shopId: req.user.shopId, customerId: req.params.customerId },
+      include: [
+        { model: SaleItem, as: 'items', include: [{ model: Product, attributes: ['id', 'name'] }] },
+        { model: User, as: 'cashier', attributes: ['id', 'name'] },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+    res.json(sales);
+  } catch (err) { next(err); }
 };

@@ -9,5 +9,7 @@ router.get('/daily', reportController.dailySales);
 router.get('/monthly', reportController.monthlySales);
 router.get('/best-selling', reportController.bestSelling);
 router.get('/by-cashier', reportController.salesByCashier);
+router.get('/range', reportController.rangeReport);
+router.get('/customer/:customerId', reportController.customerSales);
 
 module.exports = router;

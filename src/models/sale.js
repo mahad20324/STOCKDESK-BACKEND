@@ -28,8 +28,25 @@ Sale.init(
       allowNull: true,
     },
     paymentMethod: {
-      type: DataTypes.ENUM('Cash', 'Card', 'Mobile Money'),
+      type: DataTypes.ENUM('Cash', 'Card', 'Mobile Money', 'Split'),
       allowNull: false,
+    },
+    paymentSplits: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: 'Array of {method, amount} for split payments',
+    },
+    tax: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'VAT percentage applied',
+    },
+    taxAmount: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Actual tax amount charged',
     },
     currency: {
       type: DataTypes.STRING(3),

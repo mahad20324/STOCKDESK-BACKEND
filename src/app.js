@@ -10,6 +10,7 @@ const settingsRoutes = require('./routes/settings');
 const reportRoutes = require('./routes/reports');
 const printerRoutes = require('./routes/printer');
 const adminRoutes = require('./routes/admin');
+const expenseRoutes = require('./routes/expenses');
 const { errorHandler } = require('./middleware/errorHandler');
 const { getRuntimeHealth } = require('./state/runtime');
 
@@ -102,10 +103,11 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/printer', printerRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });
-});
+})
 
 app.use(errorHandler);
 

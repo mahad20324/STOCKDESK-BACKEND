@@ -12,6 +12,10 @@ const Receipt = require('./receipt');
 const ShopActivity = require('./shopActivity');
 const Setting = require('./setting');
 const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
+const Expense = require('./expense');
+const StockIn = require('./stockIn');
+const SaleReturn = require('./saleReturn');
+const SaleReturnItem = require('./saleReturnItem');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
 Shop.hasMany(User, { foreignKey: 'shopId', as: 'users' });
@@ -61,6 +65,27 @@ SaleItem.belongsTo(Product, { foreignKey: 'productId' });
 
 Sale.hasOne(Receipt, { foreignKey: 'saleId', as: 'receipt' });
 Receipt.belongsTo(Sale, { foreignKey: 'saleId' });
+
+Shop.hasMany(Expense, { foreignKey: 'shopId', as: 'expenses' });
+Expense.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Expense.belongsTo(User, { foreignKey: 'recordedByUserId', as: 'recordedBy' });
+
+Shop.hasMany(StockIn, { foreignKey: 'shopId', as: 'stockIns' });
+StockIn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+StockIn.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+Product.hasMany(StockIn, { foreignKey: 'productId', as: 'stockIns' });
+StockIn.belongsTo(User, { foreignKey: 'addedByUserId', as: 'addedBy' });
+
+Sale.hasMany(SaleReturn, { foreignKey: 'saleId', as: 'returns' });
+SaleReturn.belongsTo(Sale, { foreignKey: 'saleId', as: 'sale' });
+SaleReturn.belongsTo(User, { foreignKey: 'processedByUserId', as: 'processedBy' });
+Shop.hasMany(SaleReturn, { foreignKey: 'shopId', as: 'saleReturns' });
+SaleReturn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+
+SaleReturn.hasMany(SaleReturnItem, { foreignKey: 'returnId', as: 'items' });
+SaleReturnItem.belongsTo(SaleReturn, { foreignKey: 'returnId' });
+SaleReturnItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+Product.hasMany(SaleReturnItem, { foreignKey: 'productId' });
 
 async function findOrCreateLegacyShop() {
   let shop = await Shop.findOne({ where: { slug: 'stockdesk-shop' } });
@@ -300,5 +325,9 @@ module.exports = {
   Receipt,
   ShopActivity,
   Setting,
+  Expense,
+  StockIn,
+  SaleReturn,
+  SaleReturnItem,
   initAppData,
 };

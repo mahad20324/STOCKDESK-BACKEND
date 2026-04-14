@@ -23,6 +23,25 @@ function getSyncOptions() {
   return { alter: true };
 }
 
+async function runMigrations() {
+  // Add 'Split' to paymentMethod enum if not already present
+  // (Sequelize alter:true cannot add values to existing PostgreSQL ENUMs)
+  await sequelize.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = 'enum_sales_paymentMethod'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM pg_enum
+        WHERE enumlabel = 'Split'
+          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'enum_sales_paymentMethod')
+      ) THEN
+        ALTER TYPE "enum_sales_paymentMethod" ADD VALUE 'Split';
+      END IF;
+    END $$;
+  `).catch(() => {});
+}
+
 async function start() {
   try {
     const { warnings } = validateEnvironment();
@@ -34,6 +53,7 @@ async function start() {
     setRuntimeStatus('starting');
 
     await sequelize.authenticate();
+    await runMigrations();
     await sequelize.sync(getSyncOptions());
     await initAppData();
 

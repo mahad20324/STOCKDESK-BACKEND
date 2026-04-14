@@ -9,10 +9,12 @@ router.use(authenticate);
 
 router.get('/day-closures', authorize(['Admin']), saleController.listDayClosures);
 router.post('/close-day', authorize(['Admin']), saleController.closeBusinessDay);
+router.get('/returns', saleController.listReturns);
 
 router.post('/', saleController.createSale);
 router.get('/', saleController.listSales);
 router.get('/:id', saleController.getSale);
 router.get('/:id/receipt', saleController.getSaleReceipt);
+router.post('/:id/return', saleController.createReturn);
 
 module.exports = router;

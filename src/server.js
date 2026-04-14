@@ -40,6 +40,15 @@ async function runMigrations() {
       END IF;
     END $$;
   `).catch(() => {});
+
+  // Add new columns to sales table if they don't exist
+  // (production sync uses {} so alter:true never runs on existing tables)
+  await sequelize.query(`
+    ALTER TABLE sales
+      ADD COLUMN IF NOT EXISTS tax DECIMAL(5,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS "taxAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS "paymentSplits" JSONB;
+  `).catch(() => {});
 }
 
 async function start() {

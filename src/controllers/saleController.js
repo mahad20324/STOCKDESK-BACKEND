@@ -1,4 +1,4 @@
-const { Sale, SaleItem, Product, Receipt, User, Setting, Shop, Customer, DayClosure } = require('../models');
+const { Sale, SaleItem, Product, Receipt, User, Setting, Shop, Customer, DayClosure, SaleReturn, SaleReturnItem } = require('../models');
 const { generateReceiptPdf } = require('../utils/receiptGenerator');
 const { startOfDay, endOfDay, getMetricsForRange } = require('../utils/businessMetrics');
 const { Op } = require('sequelize');
@@ -10,7 +10,7 @@ function buildReceiptNumber(id) {
 exports.createSale = async (req, res, next) => {
   const transaction = await Sale.sequelize.transaction();
   try {
-    const { items, paymentMethod, currency, discount = 0, discountType = 'fixed', customerId = null } = req.body;
+    const { items, paymentMethod, paymentSplits, currency, discount = 0, discountType = 'fixed', customerId = null } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error('Sale must include at least one item');
     }
@@ -55,17 +55,23 @@ exports.createSale = async (req, res, next) => {
       discountAmount = discount;
     }
 
-    const total = Math.max(0, subtotal - discountAmount);
+    const afterDiscount = Math.max(0, subtotal - discountAmount);
+    const taxRate = settings ? parseFloat(settings.vat || 0) : 0;
+    const taxAmount = (afterDiscount * taxRate) / 100;
+    const total = afterDiscount + taxAmount;
 
     const sale = await Sale.create(
       {
         total,
         discount: discountAmount,
         discountType,
+        tax: taxRate,
+        taxAmount,
         cashierId: req.user.id,
         customerId: customer ? customer.id : null,
         shopId: req.user.shopId,
         paymentMethod,
+        paymentSplits: paymentSplits || null,
         currency: saleCurrency,
       },
       { transaction }
@@ -79,7 +85,7 @@ exports.createSale = async (req, res, next) => {
 
     await transaction.commit();
 
-    res.status(201).json({ saleId: sale.id, receipt: receiptNumber, total, discount: discountAmount, currency: saleCurrency });
+    res.status(201).json({ saleId: sale.id, receipt: receiptNumber, total, discount: discountAmount, taxAmount, currency: saleCurrency });
   } catch (error) {
     await transaction.rollback();
     next(error);
@@ -220,6 +226,78 @@ exports.listDayClosures = async (req, res, next) => {
       limit: 10,
     });
     res.json(closures);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createReturn = async (req, res, next) => {
+  const transaction = await Sale.sequelize.transaction();
+  try {
+    const sale = await Sale.findOne({
+      where: { id: req.params.id, shopId: req.user.shopId },
+      include: [{ model: SaleItem, as: 'items', required: false, include: [{ model: Product }] }],
+      transaction,
+    });
+    if (!sale) return res.status(404).json({ message: 'Sale not found' });
+
+    const { items, reason } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Return must include at least one item' });
+    }
+
+    let totalRefund = 0;
+    const returnItems = [];
+
+    for (const item of items) {
+      const saleItem = sale.items.find((si) => si.productId === item.productId);
+      if (!saleItem) return res.status(400).json({ message: `Product ${item.productId} not in original sale` });
+      if (item.quantity > saleItem.quantity) {
+        return res.status(400).json({ message: `Cannot return more than sold for product ${item.productId}` });
+      }
+      const refundAmount = parseFloat(saleItem.price) * item.quantity;
+      totalRefund += refundAmount;
+
+      // Restore stock
+      const product = await Product.findByPk(item.productId, { transaction });
+      if (product) {
+        product.quantity += item.quantity;
+        await product.save({ transaction });
+      }
+
+      returnItems.push({ productId: item.productId, quantity: item.quantity, refundAmount, shopId: req.user.shopId });
+    }
+
+    const saleReturn = await SaleReturn.create(
+      { saleId: sale.id, reason: reason || null, totalRefund, processedByUserId: req.user.id, shopId: req.user.shopId },
+      { transaction }
+    );
+
+    await SaleReturnItem.bulkCreate(
+      returnItems.map((ri) => ({ ...ri, returnId: saleReturn.id })),
+      { transaction }
+    );
+
+    await transaction.commit();
+    res.status(201).json({ returnId: saleReturn.id, totalRefund, message: 'Return processed successfully' });
+  } catch (error) {
+    await transaction.rollback();
+    next(error);
+  }
+};
+
+exports.listReturns = async (req, res, next) => {
+  try {
+    const returns = await SaleReturn.findAll({
+      where: { shopId: req.user.shopId },
+      include: [
+        { model: User, as: 'processedBy', attributes: ['id', 'name'] },
+        { model: SaleReturnItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name'] }] },
+        { model: Sale, as: 'sale', attributes: ['id', 'total', 'createdAt'] },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+    res.json(returns);
   } catch (error) {
     next(error);
   }

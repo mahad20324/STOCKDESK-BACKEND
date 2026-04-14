@@ -1,0 +1,54 @@
+const { StockIn, Product, User } = require('../models');
+
+exports.restockProduct = async (req, res, next) => {
+  const transaction = await Product.sequelize.transaction();
+  try {
+    const product = await Product.findOne({ where: { id: req.params.id, shopId: req.user.shopId }, transaction });
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    const { quantity, costPrice, supplier, notes } = req.body;
+    if (!quantity || Number(quantity) <= 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'quantity must be a positive number' });
+    }
+
+    product.quantity += Number(quantity);
+    if (costPrice !== undefined && costPrice !== null && costPrice !== '') {
+      product.buyPrice = parseFloat(costPrice);
+    }
+    await product.save({ transaction });
+
+    const stockIn = await StockIn.create(
+      {
+        productId: product.id,
+        quantity: Number(quantity),
+        costPrice: costPrice !== undefined ? parseFloat(costPrice) : null,
+        supplier: supplier || null,
+        notes: notes || null,
+        addedByUserId: req.user.id,
+        shopId: req.user.shopId,
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+    res.status(201).json({ stockIn, newQuantity: product.quantity });
+  } catch (error) {
+    await transaction.rollback();
+    next(error);
+  }
+};
+
+exports.stockHistory = async (req, res, next) => {
+  try {
+    const history = await StockIn.findAll({
+      where: { productId: req.params.id, shopId: req.user.shopId },
+      include: [{ model: User, as: 'addedBy', attributes: ['id', 'name'] }],
+      order: [['createdAt', 'DESC']],
+      limit: 50,
+    });
+    res.json(history);
+  } catch (error) {
+    next(error);
+  }
+};

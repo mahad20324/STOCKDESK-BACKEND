@@ -1,4 +1,4 @@
-const { Sale, SaleItem, Product, User } = require('../models');
+const { Sale, SaleItem, Product, User, Expense } = require('../models');
 const { fn, col, Op } = require('sequelize');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getMetricsForRange } = require('../utils/businessMetrics');
 
@@ -133,6 +133,65 @@ exports.salesByCashier = async (req, res, next) => {
       group: ['Sale.cashierId', 'cashier.id'],
     });
     res.json(report);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.rangeReport = async (req, res, next) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ message: 'start and end query params required' });
+
+    const rangeStart = startOfDay(new Date(start));
+    const rangeEnd = endOfDay(new Date(end));
+
+    const [metrics, sales, topProducts] = await Promise.all([
+      getMetricsForRange(req.user.shopId, rangeStart, rangeEnd),
+      Sale.findAll({
+        where: { shopId: req.user.shopId, createdAt: { [Op.gte]: rangeStart, [Op.lte]: rangeEnd } },
+        include: [
+          { model: User, as: 'cashier', attributes: ['id', 'name'] },
+          { model: SaleItem, as: 'items', required: false, include: [{ model: Product, attributes: ['id', 'name', 'buyPrice'] }] },
+        ],
+        order: [['createdAt', 'DESC']],
+      }),
+      SaleItem.findAll({
+        where: { shopId: req.user.shopId },
+        attributes: ['productId', [fn('SUM', col('SaleItem.quantity')), 'unitsSold'], [fn('SUM', col('SaleItem.price')), 'revenue']],
+        include: [
+          { model: Sale, attributes: [], where: { shopId: req.user.shopId, createdAt: { [Op.gte]: rangeStart, [Op.lte]: rangeEnd } }, required: true },
+          { model: Product, attributes: ['id', 'name', 'buyPrice'], required: false },
+        ],
+        group: ['SaleItem.productId', 'Product.id'],
+        order: [[fn('SUM', col('SaleItem.quantity')), 'DESC']],
+        limit: 10,
+      }),
+    ]);
+
+    const expensesInRange = await Expense.findAll({
+      where: { shopId: req.user.shopId, date: { [Op.gte]: start, [Op.lte]: end } },
+    });
+    const totalExpenses = expensesInRange.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+
+    res.json({ metrics, sales, topProducts, totalExpenses, start, end });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.customerSales = async (req, res, next) => {
+  try {
+    const sales = await Sale.findAll({
+      where: { shopId: req.user.shopId, customerId: req.params.customerId },
+      include: [
+        { model: SaleItem, as: 'items', required: false, include: [{ model: Product, attributes: ['id', 'name'] }] },
+        { model: User, as: 'cashier', attributes: ['id', 'name'] },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: 50,
+    });
+    res.json(sales);
   } catch (error) {
     next(error);
   }

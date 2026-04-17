@@ -14,6 +14,8 @@ const Expense = require('./expense');
 const StockIn = require('./stockIn');
 const SaleReturn = require('./saleReturn');
 const SaleReturnItem = require('./saleReturnItem');
+const Audit = require('./audit');
+const StockReconciliation = require('./stockReconciliation');
 const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
@@ -79,6 +81,17 @@ SaleReturn.hasMany(SaleReturnItem, { foreignKey: 'returnId', as: 'items' });
 SaleReturnItem.belongsTo(SaleReturn, { foreignKey: 'returnId' });
 SaleReturnItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 Product.hasMany(SaleReturnItem, { foreignKey: 'productId' });
+
+// Audit relationships
+Shop.hasMany(Audit, { foreignKey: 'shopId', as: 'audits' });
+Audit.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Audit.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// Stock Reconciliation relationships
+Shop.hasMany(StockReconciliation, { foreignKey: 'shopId', as: 'reconciliations' });
+StockReconciliation.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+StockReconciliation.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+StockReconciliation.belongsTo(User, { foreignKey: 'adjustedByUserId', as: 'adjustedBy' });
 
 async function findOrCreateLegacyShop() {
   let shop = await Shop.findOne({ where: { slug: 'stockdesk-shop' } });
@@ -206,6 +219,8 @@ module.exports = {
   sequelize,
   Shop,
   User,
+  Audit,
+  StockReconciliation,
   Customer,
   DayClosure,
   Product,

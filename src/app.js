@@ -11,6 +11,8 @@ const reportRoutes = require('./routes/reports');
 const printerRoutes = require('./routes/printer');
 const adminRoutes = require('./routes/admin');
 const expenseRoutes = require('./routes/expenses');
+const auditRoutes = require('./routes/audit');
+const stockReconciliationRoutes = require('./routes/stockReconciliation');
 const { errorHandler } = require('./middleware/errorHandler');
 const { getRuntimeHealth } = require('./state/runtime');
 
@@ -104,6 +106,8 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/printer', printerRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/stock-reconciliation', stockReconciliationRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });

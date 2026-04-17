@@ -44,7 +44,9 @@ exports.createProduct = async (req, res, next) => {
     } else if (isNaN(parseFloat(sellPrice)) || parseFloat(sellPrice) < 0) {
       validationErrors.push('Selling price must be a valid positive number');
     }
-    if (buyPrice !== undefined && buyPrice !== null && buyPrice !== '' && (isNaN(parseFloat(buyPrice)) || parseFloat(buyPrice) < 0)) {
+    if (buyPrice === undefined || buyPrice === null || buyPrice === '') {
+      validationErrors.push('Buying price is required');
+    } else if (isNaN(parseFloat(buyPrice)) || parseFloat(buyPrice) < 0) {
       validationErrors.push('Buying price must be a valid positive number');
     }
     

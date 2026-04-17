@@ -25,7 +25,7 @@ function signToken(user) {
   return jwt.sign(
     { id: user.id, role: user.role, shopId: user.shopId },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '30m' }
+    { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
 }
 
@@ -209,6 +209,39 @@ exports.signup = async (req, res, next) => {
     if (error.name === 'SequelizeUniqueConstraintError') {
       return res.status(409).json({ message: 'Username is already in use. Choose a different admin username.' });
     }
+    next(error);
+  }
+};
+
+exports.refreshToken = async (req, res, next) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+
+    const freshUser = await User.findByPk(user.id, {
+      include: [{ model: require('../models').Shop, as: 'shop', attributes: ['id', 'name', 'slug'] }],
+    });
+
+    if (!freshUser) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    const newToken = signToken(freshUser);
+    res.json({
+      token: newToken,
+      user: {
+        id: freshUser.id,
+        name: freshUser.name,
+        username: freshUser.username,
+        role: freshUser.role,
+        displayRole: getDisplayRole(freshUser),
+        shopId: freshUser.shopId,
+        shop: freshUser.shop,
+      },
+    });
+  } catch (error) {
     next(error);
   }
 };

@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { login, signup } = require('../controllers/authController');
+const { login, signup, refreshToken } = require('../controllers/authController');
 const { createRateLimiter } = require('../middleware/rateLimit');
+const { authenticate } = require('../middleware/auth');
 
 const loginRateLimiter = createRateLimiter({
 	windowMs: 15 * 60 * 1000,
@@ -19,5 +20,6 @@ const signupRateLimiter = createRateLimiter({
 
 router.post('/login', loginRateLimiter, login);
 router.post('/signup', signupRateLimiter, signup);
+router.post('/refresh', authenticate, refreshToken);
 
 module.exports = router;

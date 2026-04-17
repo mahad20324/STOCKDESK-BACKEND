@@ -35,10 +35,12 @@ exports.createSale = async (req, res, next) => {
     for (const item of items) {
       const product = await Product.findOne({ where: { id: item.productId, shopId: req.user.shopId }, transaction });
       if (!product) {
-        throw new Error(`Product ${item.productId} not found`);
+        throw new Error(`Product not found`);
       }
       if (product.quantity < item.quantity) {
-        throw new Error(`Insufficient stock for ${product.name}`);
+        const error = new Error(`${product.name} is currently out of stock. Available: ${product.quantity} units, requested: ${item.quantity} units.`);
+        error.statusCode = 409;
+        throw error;
       }
       const lineTotal = parseFloat(product.sellPrice) * item.quantity;
       subtotal += lineTotal;

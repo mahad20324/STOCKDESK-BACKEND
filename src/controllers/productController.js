@@ -33,6 +33,25 @@ exports.getProduct = async (req, res, next) => {
 exports.createProduct = async (req, res, next) => {
   try {
     const { name, category, buyPrice, sellPrice, quantity, lowStock } = req.body;
+    
+    // Validation layer
+    const validationErrors = [];
+    if (!name || name.trim().length === 0) {
+      validationErrors.push('Product name is required');
+    }
+    if (sellPrice === undefined || sellPrice === null || sellPrice === '') {
+      validationErrors.push('Selling price is required');
+    } else if (isNaN(parseFloat(sellPrice)) || parseFloat(sellPrice) < 0) {
+      validationErrors.push('Selling price must be a valid positive number');
+    }
+    if (buyPrice !== undefined && buyPrice !== null && buyPrice !== '' && (isNaN(parseFloat(buyPrice)) || parseFloat(buyPrice) < 0)) {
+      validationErrors.push('Buying price must be a valid positive number');
+    }
+    
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ message: validationErrors.join('; ') });
+    }
+    
     const product = await Product.create({ name, category, buyPrice, sellPrice, quantity, lowStock, shopId: req.user.shopId });
     res.status(201).json(product);
   } catch (error) {

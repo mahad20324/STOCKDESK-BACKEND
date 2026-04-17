@@ -50,19 +50,13 @@ StockReconciliation.init(
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
-    createdAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
-    updatedAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
   },
   {
     sequelize,
     modelName: 'StockReconciliation',
     tableName: 'stock_reconciliations',
+    timestamps: true,
+    underscored: false,
     indexes: [
       { fields: ['shopId', 'reconciliationDate'] },
       { fields: ['productId'] },

@@ -88,6 +88,37 @@ async function runMigrations() {
     CREATE INDEX IF NOT EXISTS "stock_recon_shop_date" ON "stock_reconciliations" ("shopId", "reconciliationDate");
     CREATE INDEX IF NOT EXISTS "stock_recon_product_id" ON "stock_reconciliations" ("productId");
   `).catch(() => {});
+
+  // Create sale_returns table if it doesn't exist
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS "sale_returns" (
+      id SERIAL PRIMARY KEY,
+      "saleId" INTEGER NOT NULL,
+      reason VARCHAR(255),
+      "totalRefund" DECIMAL(12,2) NOT NULL DEFAULT 0,
+      "processedByUserId" INTEGER,
+      "shopId" INTEGER,
+      "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS "sale_returns_shop" ON "sale_returns" ("shopId");
+    CREATE INDEX IF NOT EXISTS "sale_returns_sale" ON "sale_returns" ("saleId");
+  `).catch(() => {});
+
+  // Create sale_return_items table if it doesn't exist
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS "sale_return_items" (
+      id SERIAL PRIMARY KEY,
+      "returnId" INTEGER NOT NULL,
+      "productId" INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      "refundAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
+      "shopId" INTEGER,
+      "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS "sale_return_items_return" ON "sale_return_items" ("returnId");
+  `).catch(() => {});
 }
 
 async function start() {

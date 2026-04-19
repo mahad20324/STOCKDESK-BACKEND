@@ -49,6 +49,45 @@ async function runMigrations() {
       ADD COLUMN IF NOT EXISTS "taxAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS "paymentSplits" JSONB;
   `).catch(() => {});
+
+  // Create audits table if it doesn't exist
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS "audits" (
+      id SERIAL PRIMARY KEY,
+      "userId" INTEGER NOT NULL,
+      "shopId" INTEGER NOT NULL,
+      action VARCHAR(255) NOT NULL,
+      "entityType" VARCHAR(255) NOT NULL,
+      "entityId" INTEGER,
+      details JSONB,
+      "ipAddress" VARCHAR(255),
+      "userAgent" VARCHAR(255),
+      "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS "audits_shop_created" ON "audits" ("shopId", "createdAt");
+    CREATE INDEX IF NOT EXISTS "audits_user_id" ON "audits" ("userId");
+    CREATE INDEX IF NOT EXISTS "audits_entity_type" ON "audits" ("entityType");
+  `).catch(() => {});
+
+  // Create stock_reconciliations table if it doesn't exist
+  await sequelize.query(`
+    CREATE TABLE IF NOT EXISTS "stock_reconciliations" (
+      id SERIAL PRIMARY KEY,
+      "shopId" INTEGER NOT NULL,
+      "productId" INTEGER NOT NULL,
+      "systemQuantity" DECIMAL(15,2) NOT NULL,
+      "physicalQuantity" DECIMAL(15,2) NOT NULL,
+      variance DECIMAL(15,2) NOT NULL,
+      reason VARCHAR(255),
+      "adjustedByUserId" INTEGER NOT NULL,
+      notes TEXT,
+      "reconciliationDate" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS "stock_recon_shop_date" ON "stock_reconciliations" ("shopId", "reconciliationDate");
+    CREATE INDEX IF NOT EXISTS "stock_recon_product_id" ON "stock_reconciliations" ("productId");
+  `).catch(() => {});
 }
 
 async function start() {

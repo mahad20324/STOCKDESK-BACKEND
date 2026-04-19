@@ -158,39 +158,45 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   };
 
   // ═══════════════════════════════════════════════════════════
-  // INFO STRIP  (Cashier | Payment | Time | Currency)
+  // INFO GRID  — 2-column × 3-row bordered cards
   // ═══════════════════════════════════════════════════════════
-  const drawInfoStrip = () => {
-    const stripH = 68;
-    doc.roundedRect(margin, cursorY, contentWidth, stripH, 8).fill(accentSoft);
-
-    // Subtle left accent bar
-    doc.roundedRect(margin, cursorY, 4, stripH, 2).fill(accent);
+  const drawInfoGrid = () => {
+    const cellH   = 52;
+    const gap     = 8;
+    const colW    = (contentWidth - gap) / 2;
+    const gridTop = cursorY;
 
     const cells = [
-      { label: 'Cashier',         value: cashierName },
-      { label: 'Payment Method',  value: paymentMethod },
-      { label: 'Time',            value: formattedTime },
-      { label: 'Currency',        value: currency },
+      { label: 'Receipt No.',    value: receiptNumber },
+      { label: 'Date',           value: formattedDate },
+      { label: 'Cashier',        value: cashierName },
+      { label: 'Time',           value: formattedTime },
+      { label: 'Payment Method', value: paymentMethod },
+      { label: 'Currency',       value: currency },
     ];
-    const cellW = contentWidth / cells.length;
 
     cells.forEach((cell, i) => {
-      const cx = margin + i * cellW;
-      // Divider between cells
-      if (i > 0) {
-        doc.moveTo(cx, cursorY + 14).lineTo(cx, cursorY + stripH - 14)
-          .strokeColor(accentMid).lineWidth(0.75).stroke();
-      }
+      const col = i % 2;          // 0 = left, 1 = right
+      const row = Math.floor(i / 2);
+      const cx  = margin + col * (colW + gap);
+      const cy  = gridTop + row * (cellH + gap);
+
+      // Card background
+      doc.roundedRect(cx, cy, colW, cellH, 6).fill(accentSoft);
+      // Left accent bar
+      doc.roundedRect(cx, cy, 4, cellH, 2).fill(accent);
+
+      // Label
       doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(7.5).text(
-        cell.label.toUpperCase(), cx + 14, cursorY + 14, { width: cellW - 20, characterSpacing: 0.5 }
+        cell.label.toUpperCase(), cx + 14, cy + 11, { width: colW - 22, characterSpacing: 0.6 }
       );
-      doc.fillColor(textPrimary).font('Helvetica-Bold').fontSize(11.5).text(
-        cell.value, cx + 14, cursorY + 30, { width: cellW - 20 }
+      // Value
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(11).text(
+        cell.value, cx + 14, cy + 26, { width: colW - 22 }
       );
     });
 
-    cursorY += stripH + 20;
+    cursorY = gridTop + 3 * (cellH + gap) + 8;
   };
 
   // ═══════════════════════════════════════════════════════════
@@ -226,7 +232,7 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   // BUILD PAGE
   // ═══════════════════════════════════════════════════════════
   drawHeader();
-  drawInfoStrip();
+  drawInfoGrid();
 
   // "ITEMS" section label
   doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(8).text('ITEMS', margin, cursorY - 10, {
@@ -287,8 +293,7 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   const summaryW  = 230;
   const summaryX  = margin + contentWidth - summaryW;
   const notesW    = contentWidth - summaryW - 16;
-  const notesText = settings.receiptHeader ||
-    'Please keep this receipt for exchange, returns, or warranty support.';
+  const notesText = 'Please keep this receipt for exchange, returns, or warranty support.';
 
   // Calculate how tall the summary will be
   const summaryRows = 1 + (discount > 0 ? 1 : 0) + (vatAmount > 0 ? 1 : 0); // subtotal + optional rows
@@ -317,7 +322,7 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
       .text(settings.receiptFooter, margin + 14, footerY, { width: notesW - 24 });
   }
   doc.fillColor(textMuted).font('Helvetica').fontSize(8).text(
-    `Payment: ${paymentMethod}   ·   Cashier: ${cashierName}`,
+    `Issued by StockDesk  ·  ${receiptNumber}`,
     margin + 14, sectionTop + sectionH - 22, { width: notesW - 24 }
   );
 

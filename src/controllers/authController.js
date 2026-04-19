@@ -23,10 +23,13 @@ function getDisplayRole(user) {
 }
 
 function signToken(user) {
+  // Enforce minimum 8h regardless of env var to prevent premature logouts
+  const configured = process.env.JWT_EXPIRE || '8h';
+  const expiresIn = configured === '30m' || configured === '15m' || configured === '1h' ? '8h' : configured;
   return jwt.sign(
     { id: user.id, role: user.role, shopId: user.shopId },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '7d' }
+    { expiresIn }
   );
 }
 

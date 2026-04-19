@@ -158,45 +158,65 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   };
 
   // ═══════════════════════════════════════════════════════════
-  // INFO GRID  — 2-column × 3-row bordered cards
+  // INFO TABLE  — single clean label | value rows (invoice style)
   // ═══════════════════════════════════════════════════════════
-  const drawInfoGrid = () => {
-    const cellH   = 52;
-    const gap     = 8;
-    const colW    = (contentWidth - gap) / 2;
-    const gridTop = cursorY;
-
-    const cells = [
+  const drawInfoTable = () => {
+    const rows = [
       { label: 'Receipt No.',    value: receiptNumber },
       { label: 'Date',           value: formattedDate },
-      { label: 'Cashier',        value: cashierName },
       { label: 'Time',           value: formattedTime },
-      { label: 'Payment Method', value: paymentMethod },
+      { label: 'Cashier',        value: cashierName },
+      { label: 'Payment',        value: paymentMethod },
       { label: 'Currency',       value: currency },
     ];
 
-    cells.forEach((cell, i) => {
-      const col = i % 2;          // 0 = left, 1 = right
-      const row = Math.floor(i / 2);
-      const cx  = margin + col * (colW + gap);
-      const cy  = gridTop + row * (cellH + gap);
+    const rowH      = 22;
+    const labelW    = 110;
+    const dividerX  = margin + labelW + 10;
+    const valueX    = dividerX + 14;
+    const valueW    = contentWidth - labelW - 34;
+    const tableTop  = cursorY;
+    const tableH    = rows.length * rowH + 14;
 
-      // Card background
-      doc.roundedRect(cx, cy, colW, cellH, 6).fill(accentSoft);
-      // Left accent bar
-      doc.roundedRect(cx, cy, 4, cellH, 2).fill(accent);
+    // Outer container — subtle background, thin border
+    doc.roundedRect(margin, tableTop, contentWidth, tableH, 6)
+      .strokeColor(borderCol).lineWidth(0.75).stroke();
+
+    // Gold-tinted left edge strip
+    doc.roundedRect(margin, tableTop, 4, tableH, 2).fill(gold);
+
+    // Vertical divider between label and value columns
+    doc.moveTo(dividerX, tableTop + 8).lineTo(dividerX, tableTop + tableH - 8)
+      .strokeColor(borderCol).lineWidth(0.75).stroke();
+
+    rows.forEach((row, i) => {
+      const ry = tableTop + 8 + i * rowH;
+
+      // Subtle zebra stripe on even rows
+      if (i % 2 === 0) {
+        doc.rect(margin + 4, ry, contentWidth - 4, rowH)
+          .fillOpacity(0.4).fill(accentSoft);
+        doc.fillOpacity(1);
+      }
+
+      // Horizontal separator (not after last row)
+      if (i < rows.length - 1) {
+        doc.moveTo(margin + 4, ry + rowH).lineTo(margin + contentWidth, ry + rowH)
+          .strokeColor(borderCol).lineWidth(0.4).stroke();
+      }
 
       // Label
-      doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(7.5).text(
-        cell.label.toUpperCase(), cx + 14, cy + 11, { width: colW - 22, characterSpacing: 0.6 }
+      doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(8.5).text(
+        row.label, margin + 14, ry + 6, { width: labelW, characterSpacing: 0.2 }
       );
+
       // Value
-      doc.fillColor(dark).font('Helvetica-Bold').fontSize(11).text(
-        cell.value, cx + 14, cy + 26, { width: colW - 22 }
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(
+        row.value, valueX, ry + 5, { width: valueW }
       );
     });
 
-    cursorY = gridTop + 3 * (cellH + gap) + 8;
+    cursorY = tableTop + tableH + 16;
   };
 
   // ═══════════════════════════════════════════════════════════
@@ -232,7 +252,7 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   // BUILD PAGE
   // ═══════════════════════════════════════════════════════════
   drawHeader();
-  drawInfoGrid();
+  drawInfoTable();
 
   // "ITEMS" section label
   doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(8).text('ITEMS', margin, cursorY - 10, {

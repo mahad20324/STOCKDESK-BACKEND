@@ -116,10 +116,11 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
     let addrY = shopSlug ? 53 : 41;
     if (shopAddress) {
       doc.fillColor('#A8D5E2').font('Helvetica').fontSize(7.5).text(shopAddress, shopTextX, addrY, { width: 230 });
-      addrY += 11;
+      const addrH = doc.heightOfString(shopAddress, { width: 230, fontSize: 7.5 });
+      addrY += addrH + 2;
     }
     if (shopPhone) {
-      doc.fillColor('#A8D5E2').font('Helvetica').fontSize(7.5).text(shopPhone, shopTextX, addrY, { width: 230 });
+      doc.fillColor('#A8D5E2').font('Helvetica').fontSize(7.5).text(shopPhone, shopTextX, addrY, { width: 230, lineBreak: false });
     }
 
     // SALES RECEIPT label

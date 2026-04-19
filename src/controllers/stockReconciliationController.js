@@ -74,7 +74,7 @@ exports.getReconciliations = async (req, res) => {
         {
           model: Product,
           as: 'product',
-          attributes: ['id', 'name', 'sku'],
+          attributes: ['id', 'name'],
         },
         {
           model: User,
@@ -118,7 +118,7 @@ exports.getReconciliationSummary = async (req, res) => {
         {
           model: Product,
           as: 'product',
-          attributes: ['id', 'name', 'sku'],
+          attributes: ['id', 'name'],
         },
       ],
       attributes: [
@@ -127,7 +127,7 @@ exports.getReconciliationSummary = async (req, res) => {
         [require('sequelize').fn('SUM', require('sequelize').col('variance')), 'totalVariance'],
         [require('sequelize').fn('AVG', require('sequelize').col('variance')), 'avgVariance'],
       ],
-      group: ['productId', 'product.id', 'product.name', 'product.sku'],
+      group: ['productId', 'product.id', 'product.name'],
       raw: true,
       subQuery: false,
       order: [[require('sequelize').literal('totalVariance'), 'DESC']],
@@ -151,13 +151,12 @@ exports.getProductsForReconciliation = async (req, res) => {
     if (search) {
       where[Op.or] = [
         { name: { [Op.iLike]: `%${search}%` } },
-        { sku: { [Op.iLike]: `%${search}%` } },
       ];
     }
 
     const products = await Product.findAll({
       where,
-      attributes: ['id', 'name', 'sku', 'quantity', 'buyPrice', 'sellPrice'],
+      attributes: ['id', 'name', 'quantity', 'buyPrice', 'sellPrice'],
       order: [['name', 'ASC']],
       limit: 100,
     });

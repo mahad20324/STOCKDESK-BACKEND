@@ -18,7 +18,7 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
   const pageWidth  = doc.page.width;   // 595.28
   const pageHeight = doc.page.height;  // 841.89
-  const margin = 40;
+  const margin     = 36;
   const contentWidth = pageWidth - margin * 2;
 
   // ─── Colour palette ──────────────────────────────────────────
@@ -60,12 +60,12 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
     })}`;
 
   const logoBuffer    = await loadRemoteImageBuffer(settings.shopLogoUrl);
-  const bottomLimit   = pageHeight - 60;
+  const bottomLimit   = pageHeight - 46;
   const paymentMethod = sale.paymentMethod || 'N/A';
   const cashierName   = sale.cashier?.name || 'N/A';
   const receiptNumber = sale.receipt?.receiptNumber || `SD-${String(sale.id).padStart(6, '0')}`;
   const formattedDate = saleDate.toLocaleDateString('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
   });
   const formattedTime = saleDate.toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit',
@@ -75,170 +75,131 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   doc.pipe(stream);
 
   // ═══════════════════════════════════════════════════════════
-  // HEADER
+  // HEADER — compact 104px
   // ═══════════════════════════════════════════════════════════
   const drawHeader = () => {
-    const headerH = 136;
-
-    // Main header background
+    const headerH = 104;
     doc.rect(0, 0, pageWidth, headerH).fill(accentDark);
+    doc.rect(0, 0, pageWidth, 4).fill(gold);
 
-    // Gold accent stripe at very top
-    doc.rect(0, 0, pageWidth, 5).fill(gold);
-
-    // Decorative light circles (top-right corner accent)
+    // Decorative circles
     doc.save();
-    doc.fillOpacity(0.07);
-    doc.circle(pageWidth - 10, 0, 90).fill(white);
-    doc.fillOpacity(0.06);
-    doc.circle(pageWidth + 20, 80, 60).fill(white);
+    doc.fillOpacity(0.07); doc.circle(pageWidth - 10, 0, 80).fill(white);
+    doc.fillOpacity(0.05); doc.circle(pageWidth + 20, 70, 50).fill(white);
     doc.restore();
 
-    // Diagonal bottom fade strip
+    // Diagonal strip
     doc.save();
-    doc.fillOpacity(0.25);
-    doc.polygon([0, headerH - 18], [pageWidth, headerH - 36], [pageWidth, headerH], [0, headerH])
-      .fill(accentLight);
+    doc.fillOpacity(0.2);
+    doc.polygon([0, headerH - 12], [pageWidth, headerH - 26], [pageWidth, headerH], [0, headerH]).fill(accentLight);
     doc.restore();
 
-    // ─ Logo (if any)
-    const logoX = margin;
-    const logoY = 26;
+    // Logo
     if (logoBuffer) {
       try {
         doc.save();
-        doc.fillOpacity(0.2);
-        doc.roundedRect(logoX, logoY, 56, 56, 10).fill(white);
+        doc.fillOpacity(0.18);
+        doc.roundedRect(margin, 18, 48, 48, 8).fill(white);
         doc.restore();
-        doc.image(logoBuffer, logoX + 8, logoY + 8, { fit: [40, 40] });
-      } catch {
-        // ignore logo errors
-      }
+        doc.image(logoBuffer, margin + 6, 24, { fit: [36, 36] });
+      } catch { /* ignore */ }
     }
 
-    // ─ Shop name + tagline (left side)
-    const shopTextX = logoBuffer ? logoX + 68 : logoX;
-    doc.fillColor(white).font('Helvetica-Bold').fontSize(17).text(shopName, shopTextX, 30, { width: 260 });
+    // Shop name / address / phone
+    const shopTextX = logoBuffer ? margin + 60 : margin;
+    doc.fillColor(white).font('Helvetica-Bold').fontSize(15).text(shopName, shopTextX, 22, { width: 240 });
     if (shopSlug) {
-      doc.fillColor(accentMid).font('Helvetica').fontSize(8).text(
-        shopSlug.toUpperCase(), shopTextX, 52, { width: 260, characterSpacing: 1.2 }
+      doc.fillColor(accentMid).font('Helvetica').fontSize(7).text(
+        shopSlug.toUpperCase(), shopTextX, 41, { width: 240, characterSpacing: 1.1 }
       );
     }
-    let addrY = shopSlug ? 67 : 52;
+    let addrY = shopSlug ? 53 : 41;
     if (shopAddress) {
-      doc.fillColor('#A8D5E2').font('Helvetica').fontSize(8.5).text(shopAddress, shopTextX, addrY, { width: 250 });
-      addrY += 13;
+      doc.fillColor('#A8D5E2').font('Helvetica').fontSize(7.5).text(shopAddress, shopTextX, addrY, { width: 230 });
+      addrY += 11;
     }
     if (shopPhone) {
-      doc.fillColor('#A8D5E2').font('Helvetica').fontSize(8.5).text(shopPhone, shopTextX, addrY, { width: 250 });
+      doc.fillColor('#A8D5E2').font('Helvetica').fontSize(7.5).text(shopPhone, shopTextX, addrY, { width: 230 });
     }
 
-    // ─ "SALES RECEIPT" label (right side)
-    doc.fillColor(white).font('Helvetica-Bold').fontSize(24).text('SALES RECEIPT', margin, 26, {
+    // SALES RECEIPT label
+    doc.fillColor(white).font('Helvetica-Bold').fontSize(20).text('SALES RECEIPT', margin, 18, {
       align: 'right', width: contentWidth,
     });
 
-    // Receipt number pill (right)
-    const rnLabel = `# ${receiptNumber}`;
-    const rnLabelW = 160;
-    const rnX = margin + contentWidth - rnLabelW;
+    // Receipt number pill
+    const rnW = 148;
+    const rnX = margin + contentWidth - rnW;
     doc.save();
-    doc.roundedRect(rnX, 58, rnLabelW, 18, 9).fillOpacity(0.22).fill(white);
+    doc.roundedRect(rnX, 46, rnW, 15, 7).fillOpacity(0.2).fill(white);
     doc.restore();
-    doc.fillColor(white).font('Helvetica').fontSize(8.5).text(rnLabel, rnX, 62, {
-      align: 'center', width: rnLabelW,
+    doc.fillColor(white).font('Helvetica').fontSize(7.5).text(`# ${receiptNumber}`, rnX, 50, {
+      align: 'center', width: rnW,
     });
 
-    // Date (right)
-    doc.fillColor(accentMid).font('Helvetica').fontSize(8).text(formattedDate, margin, 84, {
+    // Date
+    doc.fillColor(accentMid).font('Helvetica').fontSize(7.5).text(formattedDate, margin, 68, {
       align: 'right', width: contentWidth,
     });
 
-    cursorY = headerH + 24;
+    cursorY = headerH + 14;
   };
 
   // ═══════════════════════════════════════════════════════════
-  // INFO TABLE  — single clean label | value rows (invoice style)
+  // INFO STRIP — horizontal 4-pair bar (saves ~80px vs table)
   // ═══════════════════════════════════════════════════════════
-  const drawInfoTable = () => {
-    const rows = [
-      { label: 'Cashier',        value: cashierName },
-      { label: 'Time',           value: formattedTime },
-      { label: 'Payment',        value: paymentMethod },
-      { label: 'Currency',       value: currency },
+  const drawInfoStrip = () => {
+    const stripH = 28;
+    const stripY = cursorY;
+    const pairs  = [
+      { label: 'CASHIER',  value: cashierName   },
+      { label: 'TIME',     value: formattedTime },
+      { label: 'PAYMENT',  value: paymentMethod },
+      { label: 'CURRENCY', value: currency      },
     ];
 
-    const rowH      = 22;
-    const labelW    = 110;
-    const dividerX  = margin + labelW + 10;
-    const valueX    = dividerX + 14;
-    const valueW    = contentWidth - labelW - 34;
-    const tableTop  = cursorY;
-    const tableH    = rows.length * rowH + 14;
+    doc.roundedRect(margin, stripY, contentWidth, stripH, 5).fill(accentSoft);
+    doc.roundedRect(margin, stripY, 3, stripH, 2).fill(gold);
+    doc.roundedRect(margin, stripY, contentWidth, stripH, 5)
+      .strokeColor(borderCol).lineWidth(0.6).stroke();
 
-    // Outer container — subtle background, thin border
-    doc.roundedRect(margin, tableTop, contentWidth, tableH, 6)
-      .strokeColor(borderCol).lineWidth(0.75).stroke();
-
-    // Gold-tinted left edge strip
-    doc.roundedRect(margin, tableTop, 4, tableH, 2).fill(gold);
-
-    // Vertical divider between label and value columns
-    doc.moveTo(dividerX, tableTop + 8).lineTo(dividerX, tableTop + tableH - 8)
-      .strokeColor(borderCol).lineWidth(0.75).stroke();
-
-    rows.forEach((row, i) => {
-      const ry = tableTop + 8 + i * rowH;
-
-      // Subtle zebra stripe on even rows
-      if (i % 2 === 0) {
-        doc.rect(margin + 4, ry, contentWidth - 4, rowH)
-          .fillOpacity(0.4).fill(accentSoft);
-        doc.fillOpacity(1);
+    const colW = contentWidth / pairs.length;
+    pairs.forEach((pair, i) => {
+      const cx    = margin + i * colW;
+      const textX = cx + (i === 0 ? 11 : 9);
+      if (i > 0) {
+        doc.moveTo(cx, stripY + 5).lineTo(cx, stripY + stripH - 5)
+          .strokeColor(borderCol).lineWidth(0.5).stroke();
       }
-
-      // Horizontal separator (not after last row)
-      if (i < rows.length - 1) {
-        doc.moveTo(margin + 4, ry + rowH).lineTo(margin + contentWidth, ry + rowH)
-          .strokeColor(borderCol).lineWidth(0.4).stroke();
-      }
-
-      // Label
-      doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(8.5).text(
-        row.label, margin + 14, ry + 6, { width: labelW, characterSpacing: 0.2 }
-      );
-
-      // Value
-      doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(
-        row.value, valueX, ry + 5, { width: valueW }
-      );
+      doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(6.5)
+        .text(pair.label, textX, stripY + 4, { width: colW - 14, characterSpacing: 0.3 });
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5)
+        .text(pair.value, textX, stripY + 13, { width: colW - 14 });
     });
 
-    cursorY = tableTop + tableH + 16;
+    cursorY = stripY + stripH + 12;
   };
 
   // ═══════════════════════════════════════════════════════════
   // ITEMS TABLE
   // ═══════════════════════════════════════════════════════════
-  const COL_QTY   = { x: margin + 10,  w: 36  };
-  const COL_NAME  = { x: margin + 56,  w: 248 };
-  const COL_RATE  = { x: margin + 354, w: 90  };
-  const COL_AMT   = { x: margin + 455, w: contentWidth - 455 - 10 };
+  const COL_QTY  = { x: margin + 7,   w: 28  };
+  const COL_NAME = { x: margin + 43,  w: 264 };
+  const COL_RATE = { x: margin + 357, w: 96  };
+  const COL_AMT  = { x: margin + 462, w: contentWidth - 464 };
 
   const drawTableHeader = () => {
-    doc.rect(margin, cursorY, contentWidth, 28).fill(accent);
-    doc.fillColor(white).font('Helvetica-Bold').fontSize(8.5);
-    doc.text('QTY',            COL_QTY.x,                 cursorY + 10, { width: COL_QTY.w });
-    doc.text('ITEM DESCRIPTION', COL_NAME.x,              cursorY + 10, { width: COL_NAME.w });
-    doc.text('UNIT PRICE',     COL_RATE.x,                cursorY + 10, { width: COL_RATE.w, align: 'right' });
-    doc.text('AMOUNT',         COL_AMT.x,                 cursorY + 10, { width: COL_AMT.w,  align: 'right' });
-    cursorY += 28;
+    doc.rect(margin, cursorY, contentWidth, 22).fill(accent);
+    doc.fillColor(white).font('Helvetica-Bold').fontSize(7.5);
+    doc.text('QTY',              COL_QTY.x,  cursorY + 7, { width: COL_QTY.w });
+    doc.text('ITEM DESCRIPTION', COL_NAME.x, cursorY + 7, { width: COL_NAME.w });
+    doc.text('UNIT PRICE',       COL_RATE.x, cursorY + 7, { width: COL_RATE.w, align: 'right' });
+    doc.text('AMOUNT',           COL_AMT.x,  cursorY + 7, { width: COL_AMT.w,  align: 'right' });
+    cursorY += 22;
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // PAGE BREAK HELPER
-  // ═══════════════════════════════════════════════════════════
-  const ensureSpace = (h) => {
+  // Page break for ITEM rows — redraws page header + table header on next page
+  const ensureItemSpace = (h) => {
     if (cursorY + h > bottomLimit) {
       doc.addPage();
       drawHeader();
@@ -246,122 +207,118 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
     }
   };
 
+  // Page break for non-item sections — redraws only the page header
+  const ensureSpace = (h) => {
+    if (cursorY + h > bottomLimit) {
+      doc.addPage();
+      drawHeader();
+    }
+  };
+
   // ═══════════════════════════════════════════════════════════
   // BUILD PAGE
   // ═══════════════════════════════════════════════════════════
   drawHeader();
-  drawInfoTable();
+  drawInfoStrip();
 
-  // "ITEMS" section label
-  doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(8).text('ITEMS', margin, cursorY - 10, {
-    characterSpacing: 1,
-  });
+  // Section label
   const itemCount = sale.items.reduce((sum, it) => sum + it.quantity, 0);
-  const badgeLabel = `${itemCount} unit${itemCount !== 1 ? 's' : ''}`;
-  doc.fillColor(accent).font('Helvetica-Bold').fontSize(7.5).text(
-    badgeLabel, margin + contentWidth - 60, cursorY - 10, { width: 60, align: 'right' }
-  );
+  doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(7)
+    .text('ITEMS', margin, cursorY, { characterSpacing: 0.8 });
+  doc.fillColor(accent).font('Helvetica-Bold').fontSize(7)
+    .text(
+      `${sale.items.length} line${sale.items.length !== 1 ? 's' : ''}  ·  ${itemCount} unit${itemCount !== 1 ? 's' : ''}`,
+      margin, cursorY, { align: 'right', width: contentWidth }
+    );
+  cursorY += 13;
 
-  // Table top border
-  doc.moveTo(margin, cursorY - 2).lineTo(margin + contentWidth, cursorY - 2)
+  doc.moveTo(margin, cursorY).lineTo(margin + contentWidth, cursorY)
     .strokeColor(accentMid).lineWidth(1).stroke();
 
   drawTableHeader();
 
+  // ─── Item rows ───────────────────────────────────────────────
   sale.items.forEach((item, index) => {
-    const itemName   = item.Product?.name || item.name || 'Item';
-    const lineTotal  = parseFloat(item.price) * item.quantity;
-    const nameH      = doc.heightOfString(itemName, { width: COL_NAME.w });
-    const rowH       = Math.max(30, nameH + 16);
+    const itemName  = item.Product?.name || item.name || 'Item';
+    const lineTotal = parseFloat(item.price) * item.quantity;
+    const nameH     = doc.heightOfString(itemName, { width: COL_NAME.w, fontSize: 9 });
+    const rowH      = Math.max(20, nameH + 10);
 
-    ensureSpace(rowH);
+    ensureItemSpace(rowH);
 
     const isEven = index % 2 === 0;
     doc.rect(margin, cursorY, contentWidth, rowH).fill(isEven ? rowEven : white);
+    doc.rect(margin, cursorY, 3, rowH).fill(isEven ? accentMid : borderCol);
+    doc.moveTo(margin + 3, cursorY + rowH - 0.5).lineTo(margin + contentWidth, cursorY + rowH - 0.5)
+      .strokeColor(borderCol).lineWidth(0.4).stroke();
 
-    // Left accent stripe (alternating tones)
-    doc.rect(margin, cursorY, 4, rowH).fill(isEven ? accentMid : borderCol);
-
-    // Subtle bottom border on every row
-    doc.moveTo(margin + 4, cursorY + rowH - 0.5).lineTo(margin + contentWidth, cursorY + rowH - 0.5)
-      .strokeColor(borderCol).lineWidth(0.5).stroke();
-
-    const rowMid = cursorY + rowH / 2 - 6;
-
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(10.5)
-      .text(String(item.quantity), COL_QTY.x, rowMid, { width: COL_QTY.w });
-    doc.fillColor(textPrimary).font('Helvetica').fontSize(10.5)
+    const mid = cursorY + rowH / 2 - 5;
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9)
+      .text(String(item.quantity), COL_QTY.x, mid, { width: COL_QTY.w });
+    doc.fillColor(textPrimary).font('Helvetica').fontSize(9)
       .text(itemName, COL_NAME.x, cursorY + (rowH - nameH) / 2 - 1, { width: COL_NAME.w });
-    doc.fillColor(textSecondary).font('Helvetica').fontSize(10)
-      .text(money(item.price), COL_RATE.x, rowMid, { width: COL_RATE.w, align: 'right' });
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(10.5)
-      .text(money(lineTotal), COL_AMT.x, rowMid, { width: COL_AMT.w, align: 'right' });
+    doc.fillColor(textSecondary).font('Helvetica').fontSize(8.5)
+      .text(money(item.price), COL_RATE.x, mid, { width: COL_RATE.w, align: 'right' });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9)
+      .text(money(lineTotal), COL_AMT.x, mid, { width: COL_AMT.w, align: 'right' });
 
     cursorY += rowH;
   });
 
-  // Table bottom line
+  // Bottom border
   doc.moveTo(margin, cursorY).lineTo(margin + contentWidth, cursorY)
-    .strokeColor(accentMid).lineWidth(1.5).stroke();
-  cursorY += 22;
+    .strokeColor(accentMid).lineWidth(1.2).stroke();
+  cursorY += 14;
 
   // ═══════════════════════════════════════════════════════════
-  // NOTES + SUMMARY SECTION
+  // SUMMARY + NOTES + FOOTER — always kept together on same page
   // ═══════════════════════════════════════════════════════════
-  const summaryW  = 230;
-  const summaryX  = margin + contentWidth - summaryW;
-  const notesW    = contentWidth - summaryW - 16;
-  const notesText = 'Please keep this receipt for exchange, returns, or warranty support.';
+  const summaryW    = 216;
+  const summaryX    = margin + contentWidth - summaryW;
+  const notesW      = contentWidth - summaryW - 12;
+  const summaryRows = 1 + (discount > 0 ? 1 : 0) + (vatAmount > 0 ? 1 : 0);
+  const summaryH    = 26 + summaryRows * 20 + 8 + 38;
+  const sectionH    = Math.max(summaryH, 110);
+  const footerH     = 52;
 
-  // Calculate how tall the summary will be
-  const summaryRows = 1 + (discount > 0 ? 1 : 0) + (vatAmount > 0 ? 1 : 0); // subtotal + optional rows
-  const summaryH   = 34 + summaryRows * 26 + 10 + 46; // label + rows + gap + total block
-  const sectionH   = Math.max(Math.max(summaryH, 160), 160);
-
-  ensureSpace(sectionH + 20);
+  // One single page-break check covers summary + footer together
+  ensureSpace(sectionH + footerH + 10);
   const sectionTop = cursorY;
 
-  // ─ Notes panel (left)
-  doc.roundedRect(margin, sectionTop, notesW, sectionH, 8)
-    .strokeColor(borderCol).lineWidth(0.75).stroke();
-  doc.rect(margin, sectionTop, 4, sectionH).fill(accent);
-  doc.fillColor(accent).font('Helvetica-Bold').fontSize(10.5)
-    .text('Terms & Notes', margin + 14, sectionTop + 14);
-  doc.moveTo(margin + 14, sectionTop + 30).lineTo(margin + notesW - 14, sectionTop + 30)
-    .strokeColor(accentMid).lineWidth(0.5).stroke();
-  doc.fillColor(textSecondary).font('Helvetica').fontSize(9.5).text(
-    notesText, margin + 14, sectionTop + 38, { width: notesW - 24, lineGap: 2.5 }
+  // Notes panel
+  doc.roundedRect(margin, sectionTop, notesW, sectionH, 6)
+    .strokeColor(borderCol).lineWidth(0.6).stroke();
+  doc.rect(margin, sectionTop, 3, sectionH).fill(accent);
+  doc.fillColor(accent).font('Helvetica-Bold').fontSize(9)
+    .text('Terms & Notes', margin + 11, sectionTop + 11);
+  doc.moveTo(margin + 11, sectionTop + 24).lineTo(margin + notesW - 11, sectionTop + 24)
+    .strokeColor(accentMid).lineWidth(0.4).stroke();
+  doc.fillColor(textSecondary).font('Helvetica').fontSize(8.5).text(
+    'Please keep this receipt for exchange, returns, or warranty support.',
+    margin + 11, sectionTop + 30, { width: notesW - 18, lineGap: 2 }
   );
-  if (settings.receiptFooter) {
-    const footerY = sectionTop + sectionH - 44;
-    doc.moveTo(margin + 14, footerY - 6).lineTo(margin + notesW - 14, footerY - 6)
-      .strokeColor(borderCol).lineWidth(0.5).stroke();
-    doc.fillColor(accent).font('Helvetica-Bold').fontSize(9)
-      .text(settings.receiptFooter, margin + 14, footerY, { width: notesW - 24 });
-  }
-  doc.fillColor(textMuted).font('Helvetica').fontSize(8).text(
+  doc.fillColor(textMuted).font('Helvetica').fontSize(7.5).text(
     `Issued by StockDesk  ·  ${receiptNumber}`,
-    margin + 14, sectionTop + sectionH - 22, { width: notesW - 24 }
+    margin + 11, sectionTop + sectionH - 16, { width: notesW - 18 }
   );
 
-  // ─ Receipt Summary panel (right)
-  doc.roundedRect(summaryX, sectionTop, summaryW, sectionH, 8).fill(accentSoft);
-  doc.rect(summaryX, sectionTop, summaryW, 4).fill(accent); // top accent bar on summary box
+  // Summary panel
+  doc.roundedRect(summaryX, sectionTop, summaryW, sectionH, 6).fill(accentSoft);
+  doc.rect(summaryX, sectionTop, summaryW, 3).fill(accent);
 
-  let sY = sectionTop + 16;
-  doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(7.5).text(
-    'RECEIPT SUMMARY', summaryX + 14, sY, { width: summaryW - 28, characterSpacing: 0.8 }
-  );
-  sY += 20;
+  let sY = sectionTop + 12;
+  doc.fillColor(textMuted).font('Helvetica-Bold').fontSize(6.5)
+    .text('RECEIPT SUMMARY', summaryX + 12, sY, { width: summaryW - 24, characterSpacing: 0.7 });
+  sY += 16;
 
   const drawSummaryLine = (label, value, opts = {}) => {
-    doc.moveTo(summaryX + 14, sY - 4).lineTo(summaryX + summaryW - 14, sY - 4)
-      .strokeColor(opts.topLine ? accentMid : borderCol).lineWidth(0.5).stroke();
-    doc.fillColor(opts.labelCol || textSecondary).font('Helvetica').fontSize(9.5)
-      .text(label, summaryX + 14, sY, { width: 100 });
-    doc.fillColor(opts.valueCol || textPrimary).font(opts.bold ? 'Helvetica-Bold' : 'Courier').fontSize(9.5)
-      .text(value, summaryX + 120, sY, { width: summaryW - 134, align: 'right' });
-    sY += 26;
+    doc.moveTo(summaryX + 12, sY - 3).lineTo(summaryX + summaryW - 12, sY - 3)
+      .strokeColor(opts.topLine ? accentMid : borderCol).lineWidth(0.4).stroke();
+    doc.fillColor(opts.labelCol || textSecondary).font('Helvetica').fontSize(8.5)
+      .text(label, summaryX + 12, sY, { width: 86 });
+    doc.fillColor(opts.valueCol || textPrimary).font('Courier').fontSize(8.5)
+      .text(value, summaryX + 104, sY, { width: summaryW - 116, align: 'right' });
+    sY += 20;
   };
 
   drawSummaryLine('Subtotal', money(subtotal), { topLine: true });
@@ -372,45 +329,35 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
     drawSummaryLine(`VAT (${parseFloat(settings.vat || 0)}%)`, money(vatAmount));
   }
 
-  // Total block — full-width teal filled row (flush to bottom of summary panel)
-  const totalBlockY = sectionTop + sectionH - 46;
-  doc.roundedRect(summaryX, totalBlockY, summaryW, 46, 8).fill(accent);
-  doc.fillColor(white).font('Helvetica-Bold').fontSize(11)
-    .text('TOTAL', summaryX + 14, totalBlockY + 15, { width: 90 });
-  doc.fillColor(white).font('Helvetica-Bold').fontSize(13)
-    .text(money(total), summaryX + 110, totalBlockY + 14, { width: summaryW - 124, align: 'right' });
+  // Total block — single line, fits any currency
+  const totalBlockY = sectionTop + sectionH - 38;
+  doc.roundedRect(summaryX, totalBlockY, summaryW, 38, 6).fill(accent);
+  doc.fillColor(white).font('Helvetica-Bold').fontSize(9.5)
+    .text('TOTAL', summaryX + 12, totalBlockY + 13, { width: 52 });
+  doc.fillColor(white).font('Helvetica-Bold').fontSize(9.5)
+    .text(money(total), summaryX + 70, totalBlockY + 13, { width: summaryW - 82, align: 'right' });
 
-  cursorY = sectionTop + sectionH + 20;
+  cursorY = sectionTop + sectionH + 14;
 
-  // ═══════════════════════════════════════════════════════════
-  // FOOTER
-  // ═══════════════════════════════════════════════════════════
-  ensureSpace(72);
-  cursorY += 8;
+  // ─ Footer — same page, no separate ensureSpace
+  doc.rect(margin, cursorY, contentWidth, 2).fill(gold);
+  cursorY += 9;
 
-  // Gold divider line
-  doc.rect(margin, cursorY, contentWidth, 2.5).fill(gold);
-  cursorY += 14;
+  doc.fillColor(accent).font('Helvetica-Bold').fontSize(12)
+    .text('Thank You for Your Business!', margin, cursorY, { align: 'center', width: contentWidth });
+  cursorY += 15;
 
-  // Thank you text
-  doc.fillColor(accent).font('Helvetica-Bold').fontSize(14).text('Thank You for Your Business!', margin, cursorY, {
-    align: 'center', width: contentWidth,
-  });
-  cursorY += 20;
+  doc.fillColor(textMuted).font('Helvetica').fontSize(8.5)
+    .text('We appreciate your purchase and look forward to serving you again.', margin, cursorY, {
+      align: 'center', width: contentWidth,
+    });
+  cursorY += 12;
 
-  const thankYouMsg = settings.receiptFooter && settings.receiptFooter !== settings.receiptHeader
-    ? settings.receiptFooter
-    : 'We appreciate your purchase and look forward to serving you again.';
-  doc.fillColor(textMuted).font('Helvetica').fontSize(9).text(thankYouMsg, margin, cursorY, {
-    align: 'center', width: contentWidth,
-  });
-  cursorY += 16;
-
-  // Branding footer line
-  doc.fillColor(borderCol).font('Helvetica').fontSize(7.5).text(
-    `${shopName.toUpperCase()}  ·  ${receiptNumber}  ·  ${formattedDate}`,
-    margin, cursorY, { align: 'center', width: contentWidth, characterSpacing: 0.4 }
-  );
+  doc.fillColor(borderCol).font('Helvetica').fontSize(7)
+    .text(
+      `${shopName.toUpperCase()}  ·  ${receiptNumber}  ·  ${formattedDate}`,
+      margin, cursorY, { align: 'center', width: contentWidth, characterSpacing: 0.3 }
+    );
 
   doc.end();
 };

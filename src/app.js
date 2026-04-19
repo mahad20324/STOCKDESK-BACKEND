@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const packageJson = require('../package.json');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
@@ -96,9 +97,42 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ─── Rate limiters ───────────────────────────────────────────
+// Strict limit on auth endpoints to prevent brute-force attacks
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many login attempts. Please try again in 15 minutes.' },
+  skipSuccessfulRequests: true, // only count failures
+});
+
+// General API limit — generous for normal multi-tab usage
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please slow down.' },
+});
+
+// Heavier endpoints (PDF generation, reports)
+const heavyLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests for this resource. Please wait a moment.' },
+});
+
+app.use('/api/auth', authLimiter);
+app.use('/api/sales/:id/receipt', heavyLimiter);
+app.use('/api/reports', heavyLimiter);
+app.use('/api', apiLimiter);
+
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/customers', customerRoutes);
+app.use('/api/users', userRoutes);app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/settings', settingsRoutes);

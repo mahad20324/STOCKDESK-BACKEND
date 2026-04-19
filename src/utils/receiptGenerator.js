@@ -183,10 +183,11 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   // ═══════════════════════════════════════════════════════════
   // ITEMS TABLE
   // ═══════════════════════════════════════════════════════════
-  const COL_QTY  = { x: margin + 7,   w: 28  };
-  const COL_NAME = { x: margin + 43,  w: 264 };
-  const COL_RATE = { x: margin + 357, w: 96  };
-  const COL_AMT  = { x: margin + 462, w: contentWidth - 464 };
+  // contentWidth ≈ 523px. Give AMT ~140px so long currency amounts never wrap.
+  const COL_QTY  = { x: margin + 7,   w: 26  };
+  const COL_NAME = { x: margin + 39,  w: 210 };
+  const COL_RATE = { x: margin + 255, w: 114 };
+  const COL_AMT  = { x: margin + 375, w: contentWidth - 379 };
 
   const drawTableHeader = () => {
     doc.rect(margin, cursorY, contentWidth, 22).fill(accent);
@@ -258,9 +259,9 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
     doc.fillColor(textPrimary).font('Helvetica').fontSize(9)
       .text(itemName, COL_NAME.x, cursorY + (rowH - nameH) / 2 - 1, { width: COL_NAME.w });
     doc.fillColor(textSecondary).font('Helvetica').fontSize(8.5)
-      .text(money(item.price), COL_RATE.x, mid, { width: COL_RATE.w, align: 'right' });
+      .text(money(item.price), COL_RATE.x, mid, { width: COL_RATE.w, align: 'right', lineBreak: false });
     doc.fillColor(dark).font('Helvetica-Bold').fontSize(9)
-      .text(money(lineTotal), COL_AMT.x, mid, { width: COL_AMT.w, align: 'right' });
+      .text(money(lineTotal), COL_AMT.x, mid, { width: COL_AMT.w, align: 'right', lineBreak: false });
 
     cursorY += rowH;
   });

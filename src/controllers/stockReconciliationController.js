@@ -146,7 +146,7 @@ exports.getProductsForReconciliation = async (req, res) => {
     const { shopId } = req.user;
     const { search } = req.query;
 
-    const where = { shopId, isActive: true };
+    const where = { shopId };
 
     if (search) {
       where[Op.or] = [

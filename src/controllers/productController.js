@@ -1,5 +1,6 @@
 const { Product, sequelize } = require('../models');
 const { Op } = require('sequelize');
+const { logAction } = require('./auditController');
 
 exports.listProducts = async (req, res, next) => {
   try {
@@ -55,6 +56,7 @@ exports.createProduct = async (req, res, next) => {
     }
     
     const product = await Product.create({ name, category, buyPrice, sellPrice, quantity, lowStock, shopId: req.user.shopId });
+    logAction(req.user.id, req.user.shopId, 'CREATE', 'PRODUCT', product.id, { name, category, sellPrice, quantity }, req);
     res.status(201).json(product);
   } catch (error) {
     next(error);
@@ -68,6 +70,7 @@ exports.updateProduct = async (req, res, next) => {
 
     const updates = req.body;
     await product.update(updates);
+    logAction(req.user.id, req.user.shopId, 'UPDATE', 'PRODUCT', product.id, updates, req);
     res.json(product);
   } catch (error) {
     next(error);
@@ -78,6 +81,7 @@ exports.deleteProduct = async (req, res, next) => {
   try {
     const destroyed = await Product.destroy({ where: { id: req.params.id, shopId: req.user.shopId } });
     if (!destroyed) return res.status(404).json({ message: 'Product not found' });
+    logAction(req.user.id, req.user.shopId, 'DELETE', 'PRODUCT', parseInt(req.params.id), {}, req);
     res.status(204).send();
   } catch (error) {
     next(error);

@@ -4,6 +4,7 @@ const { Shop, ShopActivity, User, Setting, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { normalizeUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
+const { logAction } = require('./auditController');
 
 function getDisplayRole(user) {
   if (user.role === 'SuperAdmin') {
@@ -95,6 +96,7 @@ exports.login = async (req, res, next) => {
     }
 
     const token = signToken(user);
+    logAction(user.id, user.shopId, 'LOGIN', 'USER', user.id, { username: user.username }, req);
     res.json({
       token,
       user: {

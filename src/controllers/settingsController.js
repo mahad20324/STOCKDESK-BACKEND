@@ -1,4 +1,5 @@
 const { Setting, Shop } = require('../models');
+const { logAction } = require('./auditController');
 
 exports.getSettings = async (req, res, next) => {
   try {
@@ -18,6 +19,7 @@ exports.updateSettings = async (req, res, next) => {
     if (!settings) return res.status(404).json({ message: 'Settings not found' });
 
     await settings.update(req.body);
+    logAction(req.user.id, req.user.shopId, 'UPDATE', 'SETTINGS', settings.id, { fields: Object.keys(req.body) }, req);
     res.json(settings);
   } catch (error) {
     next(error);

@@ -162,10 +162,8 @@ exports.generateReceiptPdf = async (stream, sale, settings) => {
   // ═══════════════════════════════════════════════════════════
   const drawInfoTable = () => {
     const rows = [
-      { label: 'Receipt No.',    value: receiptNumber },
-      { label: 'Date',           value: formattedDate },
-      { label: 'Time',           value: formattedTime },
       { label: 'Cashier',        value: cashierName },
+      { label: 'Time',           value: formattedTime },
       { label: 'Payment',        value: paymentMethod },
       { label: 'Currency',       value: currency },
     ];

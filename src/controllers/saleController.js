@@ -273,6 +273,12 @@ exports.createReturn = async (req, res, next) => {
     );
 
     await transaction.commit();
+    logAction(req.user.id, req.user.shopId, 'CREATE', 'RETURN', saleReturn.id, {
+      saleId: sale.id,
+      reason,
+      totalRefund,
+      itemCount: items.length,
+    }, req);
     res.status(201).json({ message: 'Return processed', totalRefund });
   } catch (err) { await transaction.rollback(); next(err); }
 };

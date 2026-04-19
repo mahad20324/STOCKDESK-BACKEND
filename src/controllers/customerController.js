@@ -1,5 +1,6 @@
 const { Customer, Sale } = require('../models');
 const { Op, fn, col } = require('sequelize');
+const { logAction } = require('./auditController');
 
 function normalizeCustomerPayload(body) {
   return {
@@ -72,7 +73,7 @@ exports.createCustomer = async (req, res, next) => {
       ...payload,
       shopId: req.user.shopId,
     });
-
+    logAction(req.user.id, req.user.shopId, 'CREATE', 'CUSTOMER', customer.id, { name: customer.name, phone: customer.phone }, req);
     res.status(201).json(customer);
   } catch (error) {
     next(error);
@@ -92,6 +93,7 @@ exports.updateCustomer = async (req, res, next) => {
     }
 
     await customer.update(payload);
+    logAction(req.user.id, req.user.shopId, 'UPDATE', 'CUSTOMER', customer.id, { name: customer.name }, req);
     res.json(customer);
   } catch (error) {
     next(error);
@@ -110,6 +112,7 @@ exports.deleteCustomer = async (req, res, next) => {
       return res.status(400).json({ message: 'Customer has sales history and cannot be deleted' });
     }
 
+    logAction(req.user.id, req.user.shopId, 'DELETE', 'CUSTOMER', customer.id, { name: customer.name }, req);
     await customer.destroy();
     res.status(204).send();
   } catch (error) {

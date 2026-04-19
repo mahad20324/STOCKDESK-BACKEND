@@ -1,4 +1,5 @@
 const { StockIn, Product, User } = require('../models');
+const { logAction } = require('./auditController');
 
 exports.restockProduct = async (req, res, next) => {
   try {
@@ -9,7 +10,7 @@ exports.restockProduct = async (req, res, next) => {
     product.quantity = Number(product.quantity) + Number(quantity);
     if (costPrice) product.buyPrice = costPrice;
     await product.save();
-    await StockIn.create({
+    const stockIn = await StockIn.create({
       productId: product.id,
       quantity: Number(quantity),
       costPrice: costPrice || null,
@@ -18,6 +19,12 @@ exports.restockProduct = async (req, res, next) => {
       addedByUserId: req.user.id,
       shopId: req.user.shopId,
     });
+    logAction(req.user.id, req.user.shopId, 'CREATE', 'STOCK_IN', stockIn.id, {
+      productId: product.id,
+      productName: product.name,
+      quantity,
+      supplier: supplier || null,
+    }, req);
     res.json({ message: 'Stock updated', product });
   } catch (err) { next(err); }
 };

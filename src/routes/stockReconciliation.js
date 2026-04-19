@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const stockReconciliationController = require('../controllers/stockReconciliationController');
 const authenticate = require('../middleware/auth');
-const authorize = require('../middleware/roles');
+const { authorize } = require('../middleware/roles');
 
 // Get products available for reconciliation
 router.get('/products', authenticate, authorize('Admin', 'Manager', 'Owner'), stockReconciliationController.getProductsForReconciliation);

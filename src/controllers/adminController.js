@@ -95,55 +95,6 @@ exports.getOverview = async (req, res, next) => {
     next(error);
   }
 };
-  try {
-    const shops = await Shop.findAll({
-      attributes: ['id', 'name', 'slug', 'isActive', 'createdAt'],
-      include: [{ model: Setting, as: 'settings', attributes: ['currency'], required: false }],
-      order: [['createdAt', 'DESC']],
-    });
-
-    const results = await Promise.all(
-      shops.map(async (shop) => {
-        const [owner, userCount, productCount, saleCount] = await Promise.all([
-          User.findOne({
-            where: { shopId: shop.id, role: 'Admin' },
-            attributes: ['id', 'name', 'username', 'createdAt'],
-            order: [['createdAt', 'ASC']],
-          }),
-          User.count({ where: { shopId: shop.id } }),
-          Product.count({ where: { shopId: shop.id } }),
-          Sale.count({ where: { shopId: shop.id } }),
-        ]);
-
-        return {
-          id: shop.id,
-          name: shop.name,
-          slug: shop.slug,
-          isActive: shop.isActive,
-          createdAt: shop.createdAt,
-          currency: shop.settings?.currency || 'USD',
-          owner: owner
-            ? {
-                id: owner.id,
-                name: owner.name,
-                username: owner.username,
-                createdAt: owner.createdAt,
-              }
-            : null,
-          metrics: {
-            userCount,
-            productCount,
-            saleCount,
-          },
-        };
-      })
-    );
-
-    res.json(results);
-  } catch (error) {
-    next(error);
-  }
-};
 
 exports.deleteShop = async (req, res, next) => {
   try {
@@ -170,6 +121,9 @@ exports.deleteShop = async (req, res, next) => {
       await Product.destroy({ where: { shopId }, transaction: t });
       await Customer.destroy({ where: { shopId }, transaction: t });
       await Setting.destroy({ where: { shopId }, transaction: t });
+      // Null out emails before deleting users so the addresses are immediately
+      // freed from any unique constraint and can be reused for a new shop.
+      await User.update({ email: null }, { where: { shopId }, transaction: t });
       await User.destroy({ where: { shopId }, transaction: t });
       await shop.destroy({ transaction: t });
     });

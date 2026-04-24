@@ -16,12 +16,15 @@ function signToken(user) {
 exports.login = async (req, res, next) => {
   try {
     const shopName = req.body.shopName ? String(req.body.shopName).trim() : '';
-    const username = normalizeUsername(req.body.username);
+    const rawIdentifier = req.body.username ? String(req.body.username).trim() : '';
     const password = req.body.password;
 
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Shop name, username, and password are required' });
+    if (!rawIdentifier || !password) {
+      return res.status(400).json({ message: 'Shop name, username or email, and password are required' });
     }
+
+    const isEmail = rawIdentifier.includes('@');
+    const username = isEmail ? rawIdentifier.toLowerCase() : normalizeUsername(rawIdentifier);
 
     let shop = null;
     let user = null;
@@ -40,11 +43,22 @@ exports.login = async (req, res, next) => {
         return res.status(401).json({ message: 'Invalid shop name, username, or password' });
       }
 
+      // Try username first, then email
       user = await User.findOne({ where: { shopId: shop.id, username } });
+      if (!user && isEmail) {
+        user = await User.findOne({ where: { shopId: shop.id, email: username } });
+      } else if (!user && !isEmail) {
+        user = await User.findOne({
+          where: { shopId: shop.id, email: { [Op.iLike]: rawIdentifier } },
+        });
+      }
     }
 
     if (!user) {
       user = await User.findOne({ where: { shopId: null, username, role: 'SuperAdmin' } });
+      if (!user && isEmail) {
+        user = await User.findOne({ where: { shopId: null, email: username, role: 'SuperAdmin' } });
+      }
     }
 
     if (!user) {

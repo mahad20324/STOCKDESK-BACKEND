@@ -18,6 +18,15 @@ console.log('[EmailService] config:', {
   appUrl: APP_URL,
 });
 
+// Verify SMTP connection on startup
+createTransporter().verify((err) => {
+  if (err) {
+    console.error('[EmailService] SMTP connection FAILED:', err.message, '| code:', err.code);
+  } else {
+    console.log('[EmailService] SMTP connection OK — ready to send emails');
+  }
+});
+
 function createTransporter() {
   return nodemailer.createTransport({
     host:   process.env.SMTP_HOST || 'smtp-relay.brevo.com',

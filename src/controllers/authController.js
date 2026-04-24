@@ -215,10 +215,16 @@ exports.signup = async (req, res, next) => {
 
     await transaction.commit();
 
-    // Fire-and-forget — don't block the response on email delivery
-    emailService
-      .sendVerificationEmail(normalizedEmail, normalizedShopName, verifyToken)
-      .catch((err) => console.error('Verification email failed:', err.message));
+    // Await so we can tell the user if delivery fails
+    try {
+      await emailService.sendVerificationEmail(normalizedEmail, normalizedShopName, verifyToken);
+    } catch (emailErr) {
+      console.error('Verification email failed:', emailErr.message);
+      return res.status(201).json({
+        message: 'Account created! We could not send the verification email right now — please use "Resend verification email" on the next screen.',
+        email: maskEmail(normalizedEmail),
+      });
+    }
 
     res.status(201).json({
       message: 'Account created! Check your email to verify and activate your account.',

@@ -7,6 +7,17 @@ const FROM_NAME  = process.env.SMTP_FROM_NAME  || 'StockDesk';
 const FROM_EMAIL = process.env.SMTP_FROM_EMAIL || 'noreply@stockdeskinventory.com';
 const FROM = `"${FROM_NAME}" <${FROM_EMAIL}>`;
 
+// Log SMTP config on load (masks password) so you can verify in Railway logs
+console.log('[EmailService] config:', {
+  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+  port: process.env.SMTP_PORT || '587',
+  secure: process.env.SMTP_SECURE || 'false',
+  user: process.env.SMTP_USER ? `${String(process.env.SMTP_USER).slice(0, 4)}***` : '(NOT SET)',
+  pass: process.env.SMTP_PASSWORD ? '***set***' : '(NOT SET)',
+  from: FROM,
+  appUrl: APP_URL,
+});
+
 function createTransporter() {
   return nodemailer.createTransport({
     host:   process.env.SMTP_HOST || 'smtp-relay.brevo.com',
@@ -106,12 +117,19 @@ exports.sendVerificationEmail = async (to, shopName, token) => {
     </p>
   `);
 
-  await createTransporter().sendMail({
-    from: FROM,
-    to,
-    subject: 'Verify your StockDesk account',
-    html,
-  });
+  const transporter = createTransporter();
+  try {
+    await transporter.sendMail({
+      from: FROM,
+      to,
+      subject: 'Verify your StockDesk account',
+      html,
+    });
+    console.log('[EmailService] Verification email sent to:', to);
+  } catch (err) {
+    console.error('[EmailService] FAILED to send verification email. Error:', err.message, '| Code:', err.code, '| Response:', err.response);
+    throw err;
+  }
 };
 
 exports.sendPasswordResetEmail = async (to, shopName, token) => {
@@ -144,10 +162,17 @@ exports.sendPasswordResetEmail = async (to, shopName, token) => {
     </p>
   `);
 
-  await createTransporter().sendMail({
-    from: FROM,
-    to,
-    subject: 'Reset your StockDesk password',
-    html,
-  });
+  const transporter = createTransporter();
+  try {
+    await transporter.sendMail({
+      from: FROM,
+      to,
+      subject: 'Reset your StockDesk password',
+      html,
+    });
+    console.log('[EmailService] Password reset email sent to:', to);
+  } catch (err) {
+    console.error('[EmailService] FAILED to send password reset email. Error:', err.message, '| Code:', err.code, '| Response:', err.response);
+    throw err;
+  }
 };

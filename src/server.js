@@ -105,6 +105,13 @@ async function runMigrations() {
     CREATE INDEX IF NOT EXISTS "sale_returns_sale" ON "sale_returns" ("saleId");
   `).catch(() => {});
 
+  // Add password-reset columns to users table if not present
+  await sequelize.query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS "passwordResetToken" VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS "passwordResetExpires" TIMESTAMP WITH TIME ZONE;
+  `).catch(() => {});
+
   // Create sale_return_items table if it doesn't exist
   await sequelize.query(`
     CREATE TABLE IF NOT EXISTS "sale_return_items" (

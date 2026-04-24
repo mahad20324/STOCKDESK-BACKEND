@@ -1,42 +1,43 @@
 'use strict';
 
-const nodemailer = require('nodemailer');
-
 const APP_URL = (process.env.APP_URL || 'https://app.stockdeskinventory.com').replace(/\/$/, '');
 const FROM_NAME  = process.env.SMTP_FROM_NAME  || 'StockDesk';
 const FROM_EMAIL = process.env.SMTP_FROM_EMAIL || 'noreply@stockdeskinventory.com';
-const FROM = `"${FROM_NAME}" <${FROM_EMAIL}>`;
 
-// Log SMTP config on load (masks password) so you can verify in Railway logs
+// Log config on startup
 console.log('[EmailService] config:', {
-  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-  port: process.env.SMTP_PORT || '587',
-  secure: process.env.SMTP_SECURE || 'false',
-  user: process.env.SMTP_USER ? `${String(process.env.SMTP_USER).slice(0, 4)}***` : '(NOT SET)',
-  pass: process.env.SMTP_PASSWORD ? '***set***' : '(NOT SET)',
-  from: FROM,
+  apiKey: process.env.BREVO_API_KEY ? '***set***' : '(NOT SET — add BREVO_API_KEY to Railway)',
+  from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
   appUrl: APP_URL,
 });
 
-// Verify SMTP connection on startup
-createTransporter().verify((err) => {
-  if (err) {
-    console.error('[EmailService] SMTP connection FAILED:', err.message, '| code:', err.code);
-  } else {
-    console.log('[EmailService] SMTP connection OK — ready to send emails');
+async function sendBrevoEmail({ to, subject, html }) {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
+    throw new Error('BREVO_API_KEY environment variable is not set');
   }
-});
 
-function createTransporter() {
-  return nodemailer.createTransport({
-    host:   process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-    port:   parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD,
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
+    body: JSON.stringify({
+      sender: { name: FROM_NAME, email: FROM_EMAIL },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
   });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Brevo API error ${response.status}: ${body}`);
+  }
+
+  return response.json();
 }
 
 function escapeHtml(str) {
@@ -126,17 +127,11 @@ exports.sendVerificationEmail = async (to, shopName, token) => {
     </p>
   `);
 
-  const transporter = createTransporter();
   try {
-    await transporter.sendMail({
-      from: FROM,
-      to,
-      subject: 'Verify your StockDesk account',
-      html,
-    });
+    await sendBrevoEmail({ to, subject: 'Verify your StockDesk account', html });
     console.log('[EmailService] Verification email sent to:', to);
   } catch (err) {
-    console.error('[EmailService] FAILED to send verification email. Error:', err.message, '| Code:', err.code, '| Response:', err.response);
+    console.error('[EmailService] FAILED to send verification email. Error:', err.message);
     throw err;
   }
 };
@@ -171,17 +166,11 @@ exports.sendPasswordResetEmail = async (to, shopName, token) => {
     </p>
   `);
 
-  const transporter = createTransporter();
   try {
-    await transporter.sendMail({
-      from: FROM,
-      to,
-      subject: 'Reset your StockDesk password',
-      html,
-    });
+    await sendBrevoEmail({ to, subject: 'Reset your StockDesk password', html });
     console.log('[EmailService] Password reset email sent to:', to);
   } catch (err) {
-    console.error('[EmailService] FAILED to send password reset email. Error:', err.message, '| Code:', err.code, '| Response:', err.response);
+    console.error('[EmailService] FAILED to send password reset email. Error:', err.message);
     throw err;
   }
 };

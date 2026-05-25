@@ -186,7 +186,7 @@ async function initAppData() {
   await backfillShopOwnership(legacyShop.id);
   await backfillMissingUsernames(User);
   await User.update({ role: 'Staff' }, { where: { role: { [Op.in]: ['Cashier', 'Manager'] } } });
-  await User.update({ isVerified: true, verificationToken: null }, { where: {} });
+  // NOTE: do NOT blanket-verify all users here — unverified users must click their email link
 
   const defaultSettings = await Setting.findOne({ where: { shopId: legacyShop.id } });
   if (!defaultSettings) {

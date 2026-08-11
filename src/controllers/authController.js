@@ -1,65 +1,37 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const crypto = require('crypto');
-const { Shop, ShopActivity, User, Setting, sequelize } = require('../models');
+const { Shop, User, Setting, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { normalizeUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
-const { logAction } = require('./auditController');
-const emailService = require('../services/emailService');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/emailService');
 
-function getDisplayRole(user) {
-  if (user.role === 'SuperAdmin') {
-    return 'SuperAdmin';
-  }
-
-  const tokenPrefix = typeof user.verificationToken === 'string'
-    ? user.verificationToken.split(':', 1)[0]
-    : null;
-
-  return ['Admin', 'Manager', 'Cashier'].includes(tokenPrefix)
-    ? tokenPrefix
-    : user.role === 'Admin'
-      ? 'Admin'
-      : 'Cashier';
+function maskEmail(email) {
+  const [local, domain] = email.split('@');
+  return `${local[0]}***@${domain}`;
 }
 
 function signToken(user) {
-  // Enforce minimum 8h regardless of env var to prevent premature logouts
-  const configured = process.env.JWT_EXPIRE || '8h';
-  const expiresIn = configured === '30m' || configured === '15m' || configured === '1h' ? '8h' : configured;
   return jwt.sign(
     { id: user.id, role: user.role, shopId: user.shopId },
     process.env.JWT_SECRET,
-    { expiresIn }
+    { expiresIn: process.env.JWT_EXPIRE || '8h' }
   );
-}
-
-async function recordShopLoginActivity(user, occurredAt) {
-  if (!user.shopId) {
-    return;
-  }
-
-  try {
-    await ShopActivity.upsert({
-      shopId: user.shopId,
-      lastLoginAt: occurredAt,
-      lastActiveUserId: user.id,
-    });
-  } catch (error) {
-    console.warn(`Unable to persist shop login activity for shop ${user.shopId}:`, error.message);
-  }
 }
 
 exports.login = async (req, res, next) => {
   try {
     const shopName = req.body.shopName ? String(req.body.shopName).trim() : '';
-    const username = normalizeUsername(req.body.username);
+    const rawIdentifier = req.body.username ? String(req.body.username).trim() : '';
     const password = req.body.password;
 
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Username and password are required' });
+    if (!rawIdentifier || !password) {
+      return res.status(400).json({ message: 'Shop name, username or email, and password are required' });
     }
+
+    const isEmail = rawIdentifier.includes('@');
+    const username = isEmail ? rawIdentifier.toLowerCase() : normalizeUsername(rawIdentifier);
 
     let shop = null;
     let user = null;
@@ -78,9 +50,22 @@ exports.login = async (req, res, next) => {
         return res.status(401).json({ message: 'Invalid shop name, username, or password' });
       }
 
+      // Try username first, then email
       user = await User.findOne({ where: { shopId: shop.id, username } });
-    } else {
+      if (!user && isEmail) {
+        user = await User.findOne({ where: { shopId: shop.id, email: username } });
+      } else if (!user && !isEmail) {
+        user = await User.findOne({
+          where: { shopId: shop.id, email: { [Op.iLike]: rawIdentifier } },
+        });
+      }
+    }
+
+    if (!user) {
       user = await User.findOne({ where: { shopId: null, username, role: 'SuperAdmin' } });
+      if (!user && isEmail) {
+        user = await User.findOne({ where: { shopId: null, email: username, role: 'SuperAdmin' } });
+      }
     }
 
     if (!user) {
@@ -92,26 +77,20 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid shop name, username, or password' });
     }
 
-    // Block login until email is verified
     if (!user.isVerified) {
-      const maskedEmail = maskEmail(user.email);
       return res.status(403).json({
-        message: 'Please verify your email address before signing in. Check your inbox for the verification link.',
         needsVerification: true,
-        email: maskedEmail,
+        email: user.email || '',
+        message: 'Please verify your email address before signing in.',
       });
     }
-
-    const loginTimestamp = new Date();
-    await User.update({ updatedAt: loginTimestamp }, { where: { id: user.id } });
-    await recordShopLoginActivity(user, loginTimestamp);
 
     if (!shop && user.shopId) {
       shop = await Shop.findByPk(user.shopId, { attributes: ['id', 'name', 'slug'] });
     }
 
     const token = signToken(user);
-    logAction(user.id, user.shopId, 'LOGIN', 'USER', user.id, { username: user.username }, req);
+
     res.json({
       token,
       user: {
@@ -119,7 +98,6 @@ exports.login = async (req, res, next) => {
         name: user.name,
         username: user.username,
         role: user.role,
-        displayRole: getDisplayRole(user),
         shopId: user.shopId,
         shop,
       },
@@ -136,19 +114,25 @@ exports.signup = async (req, res, next) => {
   try {
     const {
       shopName,
-      email,
+      email: rawEmail,
       username,
       password,
       confirmPassword,
     } = req.body;
 
     const normalizedShopName = shopName ? String(shopName).trim() : '';
-    const normalizedEmail    = email    ? String(email).trim().toLowerCase() : '';
     const normalizedUsername = normalizeUsername(username);
+    const normalizedEmail = rawEmail ? String(rawEmail).trim().toLowerCase() : '';
 
     if (!normalizedShopName || !normalizedEmail || !normalizedUsername || !password || !confirmPassword) {
       await transaction.rollback();
-      return res.status(400).json({ message: 'Shop name, email, admin username, password, and confirm password are required' });
+      return res.status(400).json({ message: 'Shop name, email, username, password, and confirm password are required' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'Please enter a valid email address' });
     }
 
     if (password !== confirmPassword) {
@@ -156,25 +140,38 @@ exports.signup = async (req, res, next) => {
       return res.status(400).json({ message: 'Passwords do not match' });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
-      await transaction.rollback();
-      return res.status(400).json({ message: 'Please provide a valid email address' });
-    }
-
-    const emailTaken = await User.findOne({ where: { email: normalizedEmail }, transaction });
-    if (emailTaken) {
-      await transaction.rollback();
-      return res.status(409).json({ message: 'An account with this email already exists' });
-    }
-
     const existingShop = await Shop.findOne({
-      where: { name: { [Op.iLike]: normalizedShopName } },
+      where: {
+        name: {
+          [Op.iLike]: normalizedShopName,
+        },
+      },
       transaction,
     });
+
     if (existingShop) {
       await transaction.rollback();
       return res.status(409).json({ message: 'Shop name is already in use' });
+    }
+
+    const existingEmail = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } }, transaction });
+    if (existingEmail) {
+      // Check whether the user's shop still exists — if the shop was deleted but the
+      // user row wasn't cleaned up (orphaned record), free the email and continue.
+      const ownerShop = existingEmail.shopId
+        ? await Shop.findByPk(existingEmail.shopId, { transaction })
+        : null;
+
+      if (ownerShop || existingEmail.shopId === null) {
+        // Active user (shop exists) or a SuperAdmin — genuinely taken
+        await transaction.rollback();
+        return res.status(409).json({ message: 'An account with this email already exists' });
+      }
+
+      // Orphaned user: shop was deleted but row remained — clear the email so the
+      // unique constraint doesn't block the INSERT below, then delete the row.
+      await existingEmail.update({ email: null }, { transaction });
+      await existingEmail.destroy({ transaction });
     }
 
     const shop = await Shop.create(
@@ -186,7 +183,13 @@ exports.signup = async (req, res, next) => {
     );
 
     await Setting.create(
-      { shopName: shop.name, address: '', phone: '', currency: 'USD', shopId: shop.id },
+      {
+        shopName: shop.name,
+        address: '',
+        phone: '',
+        currency: 'USD',
+        shopId: shop.id,
+      },
       { transaction }
     );
 
@@ -196,9 +199,8 @@ exports.signup = async (req, res, next) => {
       return res.status(409).json({ message: 'Username is already in use for this shop' });
     }
 
-    const verifyToken = crypto.randomBytes(32).toString('hex');
     const hash = await bcrypt.hash(password, 10);
-
+    const verificationToken = crypto.randomBytes(32).toString('hex');
     const user = await User.create(
       {
         name: normalizedUsername,
@@ -208,78 +210,39 @@ exports.signup = async (req, res, next) => {
         role: 'Admin',
         shopId: shop.id,
         isVerified: false,
-        verificationToken: verifyToken,
+        verificationToken,
       },
       { transaction }
     );
 
-    await transaction.commit();
-
-    // Await so we can tell the user if delivery fails
     try {
-      await emailService.sendVerificationEmail(normalizedEmail, normalizedShopName, verifyToken);
-    } catch (emailErr) {
-      console.error('Verification email failed:', emailErr.message);
-      return res.status(201).json({
-        message: 'Account created! We could not send the verification email right now — please use "Resend verification email" on the next screen.',
-        email: maskEmail(normalizedEmail),
+      await sendVerificationEmail(normalizedEmail, verificationToken, {
+        name: normalizedUsername,
+        shopName: shop.name,
+      });
+      await transaction.commit();
+    } catch (emailError) {
+      console.error('Failed to send verification email:', emailError.message);
+      await transaction.rollback();
+
+      return res.status(502).json({
+        message: 'Account creation failed because the verification email could not be sent. Please try again.',
       });
     }
 
     res.status(201).json({
-      message: 'Account created! Check your email to verify and activate your account.',
-      email: maskEmail(normalizedEmail),
+      message: 'Account created. Please check your email to verify your account.',
+      email: normalizedEmail,
+      shopName: shop.name,
     });
   } catch (error) {
-    if (!transaction.finished) await transaction.rollback();
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ message: 'Username is already in use. Choose a different admin username.' });
+    if (!transaction.finished) {
+      await transaction.rollback();
     }
     next(error);
   }
 };
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-function maskEmail(email) {
-  if (!email) return null;
-  const [local, domain] = String(email).split('@');
-  return `${local[0] || '*'}***@${domain}`;
-}
-
-exports.refreshToken = async (req, res, next) => {
-  try {
-    const user = req.user;
-    if (!user) {
-      return res.status(401).json({ message: 'Not authenticated' });
-    }
-
-    const freshUser = await User.findByPk(user.id, {
-      include: [{ model: require('../models').Shop, as: 'shop', attributes: ['id', 'name', 'slug'] }],
-    });
-
-    if (!freshUser) {
-      return res.status(401).json({ message: 'User not found' });
-    }
-
-    const newToken = signToken(freshUser);
-    res.json({
-      token: newToken,
-      user: {
-        id: freshUser.id,
-        name: freshUser.name,
-        username: freshUser.username,
-        role: freshUser.role,
-        displayRole: getDisplayRole(freshUser),
-        shopId: freshUser.shopId,
-        shop: freshUser.shop,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ─── Email verification ───────────────────────────────────────────────────────
 exports.verifyEmail = async (req, res, next) => {
   try {
     const { token } = req.body;
@@ -287,25 +250,14 @@ exports.verifyEmail = async (req, res, next) => {
       return res.status(400).json({ message: 'Verification token is required' });
     }
 
-    const user = await User.findOne({
-      where: { verificationToken: token, isVerified: false },
-      include: [{ model: Shop, as: 'shop', attributes: ['name'] }],
-    });
-
+    const user = await User.findOne({ where: { verificationToken: token } });
     if (!user) {
       return res.status(400).json({ message: 'This verification link is invalid or has already been used.' });
     }
 
-    await user.update({
-      isVerified: true,
-      verificationToken: `Admin:${user.id}`,
-    });
+    await user.update({ isVerified: true, verificationToken: null });
 
-    res.json({
-      message: 'Email verified! Your account is now active. You can sign in.',
-      shopName: user.shop?.name || '',
-      username: user.username,
-    });
+    res.json({ message: 'Email verified successfully. You can now sign in.' });
   } catch (error) {
     next(error);
   }
@@ -315,56 +267,57 @@ exports.resendVerification = async (req, res, next) => {
   try {
     const { email } = req.body;
     if (!email) {
-      return res.status(400).json({ message: 'Email is required' });
+      return res.status(400).json({ message: 'Email address is required' });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
-    const SAFE = { message: 'If that email is registered and unverified, a new verification link has been sent.' };
+    const user = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } } });
 
-    const user = await User.findOne({ where: { email: normalizedEmail, isVerified: false } });
-    if (!user) return res.json(SAFE);
+    // Always respond with success to avoid email enumeration
+    if (!user || user.isVerified) {
+      return res.json({ message: 'If that email has a pending verification, a new link has been sent.' });
+    }
 
-    const verifyToken = crypto.randomBytes(32).toString('hex');
-    await user.update({ verificationToken: verifyToken });
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    await user.update({ verificationToken });
+    try {
+      await sendVerificationEmail(normalizedEmail, verificationToken);
+    } catch (emailError) {
+      console.error('Failed to resend verification email:', emailError.message);
+      return res.status(502).json({
+        message: 'Unable to send the verification email right now. Please try again later.',
+      });
+    }
 
-    const shop = await Shop.findByPk(user.shopId, { attributes: ['name'] });
-    emailService
-      .sendVerificationEmail(normalizedEmail, shop?.name || 'your shop', verifyToken)
-      .catch((err) => console.error('Resend verification failed:', err.message));
-
-    res.json(SAFE);
+    res.json({ message: 'A new verification link has been sent to your email address.' });
   } catch (error) {
     next(error);
   }
 };
 
-// ─── Forgot / reset password ──────────────────────────────────────────────────
 exports.forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
     if (!email) {
-      return res.status(400).json({ message: 'Email is required' });
+      return res.status(400).json({ message: 'Email address is required' });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
-    const SAFE = { message: 'If that email is registered, a password reset link has been sent to your inbox.' };
+    const user = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } } });
 
-    const user = await User.findOne({
-      where: { email: normalizedEmail, isVerified: true },
-    });
-    if (!user) return res.json(SAFE);
+    // Always respond with success to avoid email enumeration
+    if (user) {
+      const resetPasswordToken = crypto.randomBytes(32).toString('hex');
+      const resetPasswordExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await user.update({ resetPasswordToken, resetPasswordExpiry });
+      try {
+        await sendPasswordResetEmail(normalizedEmail, resetPasswordToken);
+      } catch (emailError) {
+        console.error('Failed to send password reset email:', emailError.message);
+      }
+    }
 
-    const resetToken   = crypto.randomBytes(32).toString('hex');
-    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    await user.update({ passwordResetToken: resetToken, passwordResetExpires: resetExpires });
-
-    const shop = await Shop.findByPk(user.shopId, { attributes: ['name'] });
-    emailService
-      .sendPasswordResetEmail(normalizedEmail, shop?.name || 'your shop', resetToken)
-      .catch((err) => console.error('Password reset email failed:', err.message));
-
-    res.json(SAFE);
+    res.json({ message: "If that email is registered, a reset link has been sent to your inbox." });
   } catch (error) {
     next(error);
   }
@@ -373,34 +326,30 @@ exports.forgotPassword = async (req, res, next) => {
 exports.resetPassword = async (req, res, next) => {
   try {
     const { token, password, confirmPassword } = req.body;
-
     if (!token || !password || !confirmPassword) {
       return res.status(400).json({ message: 'Token, password, and confirm password are required' });
     }
-
     if (password !== confirmPassword) {
       return res.status(400).json({ message: 'Passwords do not match' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
-    }
-
-    const user = await User.findOne({
-      where: {
-        passwordResetToken: token,
-        passwordResetExpires: { [Op.gt]: new Date() },
-      },
-    });
-
+    const user = await User.findOne({ where: { resetPasswordToken: token } });
     if (!user) {
-      return res.status(400).json({ message: 'This reset link is invalid or has expired. Please request a new one.' });
+      return res.status(400).json({ message: 'This password reset link is invalid or has already been used.' });
+    }
+    if (!user.resetPasswordExpiry || new Date() > new Date(user.resetPasswordExpiry)) {
+      return res.status(400).json({ message: 'This password reset link has expired. Please request a new one.' });
     }
 
     const hash = await bcrypt.hash(password, 10);
-    await user.update({ password: hash, passwordResetToken: null, passwordResetExpires: null });
+    await user.update({
+      password: hash,
+      resetPasswordToken: null,
+      resetPasswordExpiry: null,
+      isVerified: true,
+    });
 
-    res.json({ message: 'Password updated successfully. You can now sign in.' });
+    res.json({ message: 'Password reset successfully. You can now sign in.' });
   } catch (error) {
     next(error);
   }

@@ -21,6 +21,7 @@ User.init(
     email: {
       type: DataTypes.STRING,
       allowNull: true,
+      unique: true,
       validate: {
         isEmail: true,
       },
@@ -47,11 +48,11 @@ User.init(
       type: DataTypes.STRING,
       allowNull: true,
     },
-    passwordResetToken: {
+    resetPasswordToken: {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    passwordResetExpires: {
+    resetPasswordExpiry: {
       type: DataTypes.DATE,
       allowNull: true,
     },

@@ -7,6 +7,10 @@ const Receipt = require('../models/receipt');
 const User = require('../models/user');
 const Product = require('../models/product');
 const Setting = require('../models/setting');
+const Shop = require('../models/shop');
+const whatsappService = require('../services/whatsappService');
+const rateLimit = require('express-rate-limit');
+const Audit = require('../models/audit');
 const { getPrinterService } = require('../services/printerService');
 
 /**
@@ -212,4 +216,97 @@ router.post('/disconnect', authenticate, authorize(['Admin']), (req, res) => {
   }
 });
 
+/**
+ * Send receipt via WhatsApp
+ * POST /api/printer/send-whatsapp
+ */
+const sendWhatsappLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // limit each user/IP to 10 requests per windowMs
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : req.ip),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: 'Too many WhatsApp send attempts. Try again later.' }),
+});
+
+router.post('/send-whatsapp', authenticate, sendWhatsappLimiter, async (req, res) => {
+  try {
+    const { saleId, to } = req.body;
+
+    if (!saleId || !to) {
+      return res.status(400).json({ error: 'saleId and to (phone) are required' });
+    }
+
+    const sale = await Sale.findByPk(saleId, {
+      include: [
+        {
+          association: 'items',
+          attributes: ['productId', 'price', 'quantity'],
+          include: [
+            {
+              association: 'Product',
+              attributes: ['name'],
+            },
+          ],
+        },
+        {
+          association: 'cashier',
+          attributes: ['username'],
+        },
+      ],
+    });
+
+    if (!sale) return res.status(404).json({ error: 'Sale not found' });
+
+    const receipt = await Receipt.findOne({ where: { saleId }, attributes: ['receiptNumber'] });
+    const settings = (await Setting.findOne()) || {};
+    const shop = sale.shopId ? await Shop.findByPk(sale.shopId) : null;
+
+    const provider = shop?.whatsapp_provider || 'twilio';
+    const fromNumber = shop?.whatsapp_sender_number || process.env.TWILIO_WHATSAPP_NUMBER;
+
+    if (!fromNumber) {
+      return res.status(400).json({ error: 'No WhatsApp sender number configured for this shop or server' });
+    }
+
+    // Attach receipt number and shop info into settings for the PDF generator
+    const pdfSettings = Object.assign({}, settings, {
+      shopName: settings.shopName || shop?.name || 'StockDesk',
+      shopLogoUrl: settings.shopLogoUrl,
+      address: settings.address,
+      phone: settings.phone,
+    });
+
+    const result = await whatsappService.sendReceipt({
+      provider,
+      fromNumber,
+      toNumber: to,
+      sale: Object.assign({}, sale.get ? sale.get() : sale, { receipt: { receiptNumber: receipt?.receiptNumber } }),
+      settings: pdfSettings,
+    });
+
+    // Audit log
+    try {
+      await Audit.create({
+        userId: req.user.id,
+        shopId: sale.shopId || req.user.shopId || null,
+        action: 'SEND_WHATSAPP',
+        entityType: 'SALE',
+        entityId: sale.id,
+        details: { to, provider, sid: result.sid || result.messageSid || null },
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent') || null,
+      });
+    } catch (err) {
+      console.warn('Failed to write audit log for WhatsApp send:', err.message || err);
+    }
+
+    res.json({ success: true, sid: result.sid || result.messageSid || null });
+  } catch (error) {
+    console.error('Send WhatsApp error:', error);
+    res.status(500).json({ error: 'Failed to send WhatsApp receipt', message: error.message });
+  }
+});
+
 module.exports = router;
+

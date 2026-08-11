@@ -1,129 +1,134 @@
-const { Setting, Shop, ShopActivity, User } = require('../models');
+const { Op } = require('sequelize');
+const {
+  Audit,
+  Customer,
+  DayClosure,
+  Expense,
+  Product,
+  Receipt,
+  Sale,
+  SaleItem,
+  SaleReturn,
+  SaleReturnItem,
+  Setting,
+  Shop,
+  StockIn,
+  StockReconciliation,
+  User,
+  sequelize,
+} = require('../models');
 
-const ACTIVE_WINDOW_HOURS = 24;
-
-function getDisplayRole(user) {
-  if (!user) {
-    return null;
-  }
-
-  const tokenPrefix = typeof user.verificationToken === 'string'
-    ? user.verificationToken.split(':', 1)[0]
-    : null;
-
-  return ['Admin', 'Manager', 'Cashier'].includes(tokenPrefix)
-    ? tokenPrefix
-    : (user.role === 'Admin' ? 'Admin' : user.role);
-}
-
-async function buildShopSnapshots() {
-  const shops = await Shop.findAll({
-    attributes: ['id', 'name', 'slug', 'isActive', 'createdAt'],
-    include: [
-      { model: Setting, as: 'settings', attributes: ['currency'], required: false },
-      { model: ShopActivity, as: 'activity', attributes: ['lastLoginAt', 'lastActiveUserId'], required: false },
-    ],
-    order: [['createdAt', 'DESC']],
-  });
-
-  const lastActiveUserIds = [...new Set(
-    shops
-      .map((shop) => shop.activity?.lastActiveUserId)
-      .filter(Boolean)
-  )];
-
-  const lastActiveUsers = lastActiveUserIds.length > 0
-    ? await User.findAll({
-        where: { id: lastActiveUserIds },
-        attributes: ['id', 'name', 'username', 'role', 'verificationToken'],
-      })
-    : [];
-
-  const lastActiveUserMap = new Map(lastActiveUsers.map((user) => [user.id, user]));
-
-  return Promise.all(
-    shops.map(async (shop) => {
-      const [owner, userCount, lastFallbackUser] = await Promise.all([
-        User.findOne({
-          where: { shopId: shop.id, role: 'Admin' },
-          attributes: ['id', 'name', 'username', 'createdAt'],
-          order: [['createdAt', 'ASC']],
-        }),
-        User.count({ where: { shopId: shop.id } }),
-        User.findOne({
-          where: { shopId: shop.id },
-          attributes: ['id', 'name', 'username', 'role', 'verificationToken', 'updatedAt'],
-          order: [['updatedAt', 'DESC']],
-        }),
-      ]);
-
-      const lastActiveUser = lastActiveUserMap.get(shop.activity?.lastActiveUserId) || lastFallbackUser || null;
-      const lastLoginAt = shop.activity?.lastLoginAt || lastFallbackUser?.updatedAt || null;
-
-      return {
-        id: shop.id,
-        name: shop.name,
-        slug: shop.slug,
-        isActive: shop.isActive,
-        createdAt: shop.createdAt,
-        currency: shop.settings?.currency || 'USD',
-        owner: owner
-          ? {
-              id: owner.id,
-              name: owner.name,
-              username: owner.username,
-              createdAt: owner.createdAt,
-            }
-          : null,
-        metrics: {
-          userCount,
-        },
-        activity: {
-          lastLoginAt,
-          lastActiveUser: lastActiveUser
-            ? {
-                id: lastActiveUser.id,
-                name: lastActiveUser.name,
-                username: lastActiveUser.username,
-                role: getDisplayRole(lastActiveUser),
-              }
-            : null,
-        },
-      };
-    })
-  );
-}
+const ACTIVITY_WINDOW_HOURS = 24;
 
 exports.getOverview = async (req, res, next) => {
   try {
-    const shops = await buildShopSnapshots();
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const recentActivityThreshold = new Date(Date.now() - ACTIVE_WINDOW_HOURS * 60 * 60 * 1000);
+    const shops = await Shop.findAll({
+      attributes: ['id', 'name', 'slug', 'isActive', 'createdAt'],
+      include: [{ model: Setting, as: 'settings', attributes: ['currency'], required: false }],
+      order: [['createdAt', 'DESC']],
+    });
 
-    const summary = {
-      totalShops: shops.length,
-      activeShops: shops.filter((shop) => shop.isActive).length,
-      recentlyActiveShops: shops.filter((shop) => shop.activity?.lastLoginAt && new Date(shop.activity.lastLoginAt) >= recentActivityThreshold).length,
-      newShopsToday: shops.filter((shop) => new Date(shop.createdAt) >= startOfDay).length,
-      totalUsers: shops.reduce((sum, shop) => sum + Number(shop.metrics?.userCount || 0), 0),
-    };
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const activityCutoff = new Date(now.getTime() - ACTIVITY_WINDOW_HOURS * 60 * 60 * 1000);
+
+    const results = await Promise.all(
+      shops.map(async (shop) => {
+        const [owner, userCount, productCount, saleCount, lastSale] = await Promise.all([
+          User.findOne({
+            where: { shopId: shop.id, role: 'Admin' },
+            attributes: ['id', 'name', 'username', 'createdAt'],
+            order: [['createdAt', 'ASC']],
+          }),
+          User.count({ where: { shopId: shop.id } }),
+          Product.count({ where: { shopId: shop.id } }),
+          Sale.count({ where: { shopId: shop.id } }),
+          Sale.findOne({
+            where: { shopId: shop.id },
+            order: [['createdAt', 'DESC']],
+            attributes: ['id', 'createdAt', 'cashierId'],
+            include: [{ model: User, as: 'cashier', attributes: ['username', 'role'], required: false }],
+          }),
+        ]);
+
+        const lastLoginAt = lastSale?.createdAt || null;
+        const lastActiveUser = lastSale?.cashier
+          ? { username: lastSale.cashier.username, role: lastSale.cashier.role }
+          : null;
+
+        return {
+          id: shop.id,
+          name: shop.name,
+          slug: shop.slug,
+          isActive: shop.isActive,
+          createdAt: shop.createdAt,
+          currency: shop.settings?.currency || 'USD',
+          owner: owner
+            ? { id: owner.id, name: owner.name, username: owner.username, createdAt: owner.createdAt }
+            : null,
+          metrics: { userCount, productCount, saleCount },
+          activity: { lastLoginAt, lastActiveUser },
+        };
+      })
+    );
+
+    const totalUsers = await User.count({ where: { shopId: { [Op.not]: null } } });
+    const newShopsToday = results.filter((s) => new Date(s.createdAt) >= todayStart).length;
+    const recentlyActiveShops = results.filter(
+      (s) => s.activity.lastLoginAt && new Date(s.activity.lastLoginAt) >= activityCutoff
+    ).length;
 
     res.json({
-      generatedAt: new Date().toISOString(),
-      activityWindowHours: ACTIVE_WINDOW_HOURS,
-      summary,
-      shops,
+      shops: results,
+      summary: {
+        totalShops: results.length,
+        activeShops: results.filter((s) => s.isActive).length,
+        recentlyActiveShops,
+        newShopsToday,
+        totalUsers,
+      },
+      activityWindowHours: ACTIVITY_WINDOW_HOURS,
+      generatedAt: now.toISOString(),
     });
   } catch (error) {
     next(error);
   }
 };
 
-exports.listShops = async (req, res, next) => {
+exports.deleteShop = async (req, res, next) => {
   try {
-    const shops = await buildShopSnapshots();
-    res.json(shops);
+    const shop = await Shop.findByPk(req.params.id);
+    if (!shop) {
+      return res.status(404).json({ message: 'Shop not found' });
+    }
+
+    const shopId = shop.id;
+
+    await sequelize.transaction(async (t) => {
+      // Delete leaf records that reference SaleReturn and Sale
+      await SaleReturnItem.destroy({ where: { shopId }, transaction: t });
+      await SaleReturn.destroy({ where: { shopId }, transaction: t });
+      await Receipt.destroy({ where: { shopId }, transaction: t });
+      await SaleItem.destroy({ where: { shopId }, transaction: t });
+      await Sale.destroy({ where: { shopId }, transaction: t });
+      // Delete records that reference Products and Users before them
+      await DayClosure.destroy({ where: { shopId }, transaction: t });
+      await StockReconciliation.destroy({ where: { shopId }, transaction: t });
+      await StockIn.destroy({ where: { shopId }, transaction: t });
+      await Audit.destroy({ where: { shopId }, transaction: t });
+      await Expense.destroy({ where: { shopId }, transaction: t });
+      await Product.destroy({ where: { shopId }, transaction: t });
+      await Customer.destroy({ where: { shopId }, transaction: t });
+      await Setting.destroy({ where: { shopId }, transaction: t });
+      // Null out emails before deleting users so the addresses are immediately
+      // freed from any unique constraint and can be reused for a new shop.
+      await User.update({ email: null, verificationToken: null, resetPasswordToken: null }, { where: { shopId }, transaction: t });
+      await User.destroy({ where: { shopId }, transaction: t });
+      await shop.destroy({ transaction: t });
+    });
+
+    res.json({ message: 'Shop and all associated data deleted successfully.' });
   } catch (error) {
     next(error);
   }

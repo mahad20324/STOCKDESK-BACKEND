@@ -1,5 +1,5 @@
-const { Op } = require('sequelize');
 const bcrypt = require('bcrypt');
+const { Op } = require('sequelize');
 const sequelize = require('../config/db');
 const Shop = require('./shop');
 const User = require('./user');
@@ -9,49 +9,42 @@ const Product = require('./product');
 const Sale = require('./sale');
 const SaleItem = require('./saleItem');
 const Receipt = require('./receipt');
-const ShopActivity = require('./shopActivity');
 const Setting = require('./setting');
-const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const Expense = require('./expense');
 const StockIn = require('./stockIn');
 const SaleReturn = require('./saleReturn');
 const SaleReturnItem = require('./saleReturnItem');
 const Audit = require('./audit');
 const StockReconciliation = require('./stockReconciliation');
+const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
-Shop.hasMany(User, { foreignKey: 'shopId', as: 'users' });
-User.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(User, { foreignKey: 'shopId', as: 'users', onDelete: 'CASCADE', hooks: true });
+User.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(Customer, { foreignKey: 'shopId', as: 'customers' });
-Customer.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Customer, { foreignKey: 'shopId', as: 'customers', onDelete: 'CASCADE', hooks: true });
+Customer.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(DayClosure, { foreignKey: 'shopId', as: 'dayClosures' });
-DayClosure.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(DayClosure, { foreignKey: 'shopId', as: 'dayClosures', onDelete: 'CASCADE', hooks: true });
+DayClosure.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(Product, { foreignKey: 'shopId', as: 'products' });
-Product.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Product, { foreignKey: 'shopId', as: 'products', onDelete: 'CASCADE', hooks: true });
+Product.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(Sale, { foreignKey: 'shopId', as: 'sales' });
-Sale.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Sale, { foreignKey: 'shopId', as: 'sales', onDelete: 'CASCADE', hooks: true });
+Sale.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(SaleItem, { foreignKey: 'shopId', as: 'saleItems' });
-SaleItem.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(SaleItem, { foreignKey: 'shopId', as: 'saleItems', onDelete: 'CASCADE', hooks: true });
+SaleItem.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(Receipt, { foreignKey: 'shopId', as: 'receipts' });
-Receipt.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Receipt, { foreignKey: 'shopId', as: 'receipts', onDelete: 'CASCADE', hooks: true });
+Receipt.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasOne(Setting, { foreignKey: 'shopId', as: 'settings' });
-Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
-
-Shop.hasOne(ShopActivity, { foreignKey: 'shopId', as: 'activity' });
-ShopActivity.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasOne(Setting, { foreignKey: 'shopId', as: 'settings', onDelete: 'CASCADE', hooks: true });
+Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
 User.hasMany(Sale, { foreignKey: 'cashierId', as: 'sales' });
 Sale.belongsTo(User, { foreignKey: 'cashierId', as: 'cashier' });
-
-User.hasMany(ShopActivity, { foreignKey: 'lastActiveUserId', as: 'shopActivityEntries' });
-ShopActivity.belongsTo(User, { foreignKey: 'lastActiveUserId', as: 'lastActiveUser' });
 
 User.hasMany(DayClosure, { foreignKey: 'closedByUserId', as: 'closedDays' });
 DayClosure.belongsTo(User, { foreignKey: 'closedByUserId', as: 'closedBy' });
@@ -68,12 +61,12 @@ SaleItem.belongsTo(Product, { foreignKey: 'productId' });
 Sale.hasOne(Receipt, { foreignKey: 'saleId', as: 'receipt' });
 Receipt.belongsTo(Sale, { foreignKey: 'saleId' });
 
-Shop.hasMany(Expense, { foreignKey: 'shopId', as: 'expenses' });
-Expense.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Expense, { foreignKey: 'shopId', as: 'expenses', onDelete: 'CASCADE', hooks: true });
+Expense.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 Expense.belongsTo(User, { foreignKey: 'recordedByUserId', as: 'recordedBy' });
 
-Shop.hasMany(StockIn, { foreignKey: 'shopId', as: 'stockIns' });
-StockIn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(StockIn, { foreignKey: 'shopId', as: 'stockIns', onDelete: 'CASCADE', hooks: true });
+StockIn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 StockIn.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 Product.hasMany(StockIn, { foreignKey: 'productId', as: 'stockIns' });
 StockIn.belongsTo(User, { foreignKey: 'addedByUserId', as: 'addedBy' });
@@ -81,8 +74,8 @@ StockIn.belongsTo(User, { foreignKey: 'addedByUserId', as: 'addedBy' });
 Sale.hasMany(SaleReturn, { foreignKey: 'saleId', as: 'returns' });
 SaleReturn.belongsTo(Sale, { foreignKey: 'saleId', as: 'sale' });
 SaleReturn.belongsTo(User, { foreignKey: 'processedByUserId', as: 'processedBy' });
-Shop.hasMany(SaleReturn, { foreignKey: 'shopId', as: 'saleReturns' });
-SaleReturn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(SaleReturn, { foreignKey: 'shopId', as: 'saleReturns', onDelete: 'CASCADE', hooks: true });
+SaleReturn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
 SaleReturn.hasMany(SaleReturnItem, { foreignKey: 'returnId', as: 'items' });
 SaleReturnItem.belongsTo(SaleReturn, { foreignKey: 'returnId' });
@@ -90,13 +83,13 @@ SaleReturnItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 Product.hasMany(SaleReturnItem, { foreignKey: 'productId' });
 
 // Audit relationships
-Shop.hasMany(Audit, { foreignKey: 'shopId', as: 'audits' });
-Audit.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Audit, { foreignKey: 'shopId', as: 'audits', onDelete: 'CASCADE', hooks: true });
+Audit.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 Audit.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // Stock Reconciliation relationships
-Shop.hasMany(StockReconciliation, { foreignKey: 'shopId', as: 'reconciliations' });
-StockReconciliation.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(StockReconciliation, { foreignKey: 'shopId', as: 'reconciliations', onDelete: 'CASCADE', hooks: true });
+StockReconciliation.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 StockReconciliation.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 StockReconciliation.belongsTo(User, { foreignKey: 'adjustedByUserId', as: 'adjustedBy' });
 
@@ -114,15 +107,7 @@ async function findOrCreateLegacyShop() {
 }
 
 async function backfillShopOwnership(shopId) {
-  await User.update(
-    { shopId },
-    {
-      where: {
-        shopId: null,
-        role: { [Op.ne]: 'SuperAdmin' },
-      },
-    }
-  );
+  await User.update({ shopId }, { where: { shopId: null } });
   await Customer.update({ shopId }, { where: { shopId: null } });
   await DayClosure.update({ shopId }, { where: { shopId: null } });
   await Product.update({ shopId }, { where: { shopId: null } });
@@ -132,161 +117,66 @@ async function backfillShopOwnership(shopId) {
   await Setting.update({ shopId }, { where: { shopId: null } });
 }
 
-async function normalizeUserConstraints() {
-  try {
-    const [constraints] = await sequelize.query(`
-      SELECT
-        con.conname AS "constraintName",
-        array_agg(att.attname ORDER BY cols.ordinality) AS columns
-      FROM pg_constraint con
-      JOIN pg_class tbl
-        ON tbl.oid = con.conrelid
-      JOIN pg_namespace ns
-        ON ns.oid = tbl.relnamespace
-      JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS cols(attnum, ordinality)
-        ON TRUE
-      JOIN pg_attribute att
-        ON att.attrelid = tbl.oid
-       AND att.attnum = cols.attnum
-      WHERE ns.nspname = 'public'
-        AND tbl.relname = 'users'
-        AND con.contype = 'u'
-      GROUP BY con.conname
-    `);
-
-    for (const constraint of constraints) {
-      const columns = Array.isArray(constraint.columns) ? constraint.columns : [];
-      const isLegacySingleColumnConstraint =
-        columns.length === 1 && ['username', 'email', 'verificationToken'].includes(columns[0]);
-
-      if (isLegacySingleColumnConstraint) {
-        await sequelize.query(`ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "${constraint.constraintName}"`);
-      }
-    }
-
-    const [standaloneIndexes] = await sequelize.query(`
-      SELECT idx.indexname AS "indexName"
-      FROM pg_indexes idx
-      JOIN pg_class index_class
-        ON index_class.relname = idx.indexname
-      JOIN pg_namespace index_ns
-        ON index_ns.oid = index_class.relnamespace
-       AND index_ns.nspname = idx.schemaname
-      JOIN pg_class table_class
-        ON table_class.relname = idx.tablename
-      JOIN pg_namespace table_ns
-        ON table_ns.oid = table_class.relnamespace
-       AND table_ns.nspname = idx.schemaname
-      JOIN pg_index index_data
-        ON index_data.indexrelid = index_class.oid
-       AND index_data.indrelid = table_class.oid
-      JOIN LATERAL unnest(index_data.indkey) WITH ORDINALITY AS cols(attnum, ordinality)
-        ON cols.attnum > 0
-      JOIN pg_attribute att
-        ON att.attrelid = table_class.oid
-       AND att.attnum = cols.attnum
-      LEFT JOIN pg_constraint con
-        ON con.conindid = index_class.oid
-      WHERE idx.schemaname = 'public'
-        AND idx.tablename = 'users'
-        AND index_data.indisunique
-      GROUP BY idx.indexname, con.oid
-      HAVING con.oid IS NULL
-         AND count(*) = 1
-         AND max(att.attname) IN ('username', 'email', 'verificationToken')
-    `);
-
-    for (const index of standaloneIndexes) {
-      await sequelize.query(`DROP INDEX IF EXISTS "${index.indexName}"`);
-    }
-
-    await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "users_shopId_username_unique" ON "users" ("shopId", "username")');
-  } catch (error) {
-    console.warn('Skipping legacy user constraint normalization:', error.message);
-  }
-}
-
 async function ensureSuperAdmin() {
-  try {
-    const configuredPassword = process.env.SUPERADMIN_PASSWORD ? String(process.env.SUPERADMIN_PASSWORD) : '';
-    const configuredName = process.env.SUPERADMIN_NAME ? String(process.env.SUPERADMIN_NAME).trim() : 'Platform Administrator';
-    const configuredUsername = process.env.SUPERADMIN_USERNAME ? String(process.env.SUPERADMIN_USERNAME).trim().toLowerCase() : 'superadmin';
+  const configuredPassword = process.env.SUPERADMIN_PASSWORD ? String(process.env.SUPERADMIN_PASSWORD) : '';
+  const configuredName = process.env.SUPERADMIN_NAME ? String(process.env.SUPERADMIN_NAME).trim() : 'Platform Administrator';
+  const configuredUsername = process.env.SUPERADMIN_USERNAME ? String(process.env.SUPERADMIN_USERNAME).trim().toLowerCase() : 'superadmin';
 
-    if (!configuredUsername) {
+  if (!configuredUsername) {
+    return;
+  }
+
+  let user = await User.findOne({ where: { shopId: null, username: configuredUsername } });
+
+  if (!user) {
+    if (!configuredPassword) {
+      console.warn('SUPERADMIN_USERNAME is set but SUPERADMIN_PASSWORD is missing. Skipping super admin bootstrap.');
       return;
     }
 
-    let user = await User.findOne({ where: { shopId: null, username: configuredUsername } });
+    const passwordHash = await bcrypt.hash(configuredPassword, 10);
+    const username = await generateUniqueUsername(User, {
+      username: configuredUsername,
+      name: configuredName,
+    }, undefined, null);
 
-    if (!user) {
-      const conflictingUser = await User.findOne({ where: { username: configuredUsername } });
+    await User.create({
+      name: configuredName,
+      username,
+      email: null,
+      password: passwordHash,
+      role: 'SuperAdmin',
+      shopId: null,
+      isVerified: true,
+      verificationToken: null,
+    });
 
-      if (conflictingUser) {
-        if (conflictingUser.role === 'SuperAdmin') {
-          user = conflictingUser;
-        } else {
-          const location = conflictingUser.shopId === null ? 'shopless account' : `shopId ${conflictingUser.shopId}`;
+    console.log(`Bootstrapped super admin account for ${username}`);
+    return;
+  }
 
-          console.warn(
-            `SUPERADMIN_USERNAME "${configuredUsername}" already matches user ${conflictingUser.id} (${conflictingUser.role}, ${location}). Choose a unique owner username in Railway variables. Skipping super admin bootstrap.`
-          );
-          return;
-        }
-      }
-    }
+  let changed = false;
 
-    if (!user) {
-      if (!configuredPassword) {
-        console.warn('SUPERADMIN_USERNAME is set but SUPERADMIN_PASSWORD is missing. Skipping super admin bootstrap.');
-        return;
-      }
+  if (user.role !== 'SuperAdmin') {
+    user.role = 'SuperAdmin';
+    changed = true;
+  }
+  if (user.shopId !== null) {
+    user.shopId = null;
+    changed = true;
+  }
+  if (!user.isVerified) {
+    user.isVerified = true;
+    changed = true;
+  }
+  if (user.verificationToken !== null) {
+    user.verificationToken = null;
+    changed = true;
+  }
 
-      const passwordHash = await bcrypt.hash(configuredPassword, 10);
-      const username = await generateUniqueUsername(User, {
-        username: configuredUsername,
-        name: configuredName,
-      }, undefined, null);
-
-      await User.create({
-        name: configuredName,
-        username,
-        email: null,
-        password: passwordHash,
-        role: 'SuperAdmin',
-        shopId: null,
-        isVerified: true,
-        verificationToken: null,
-      });
-
-      console.log(`Bootstrapped super admin account for ${username}`);
-      return;
-    }
-
-    let changed = false;
-
-    if (user.role !== 'SuperAdmin') {
-      user.role = 'SuperAdmin';
-      changed = true;
-    }
-    if (user.shopId !== null) {
-      user.shopId = null;
-      changed = true;
-    }
-    if (!user.isVerified) {
-      user.isVerified = true;
-      changed = true;
-    }
-    if (user.verificationToken !== null) {
-      user.verificationToken = null;
-      changed = true;
-    }
-
-    if (changed) {
-      await user.save();
-      console.log(`Updated ${user.username} to SuperAdmin access`);
-    }
-  } catch (error) {
-    console.warn('Skipping super admin bootstrap:', error.message);
+  if (changed) {
+    await user.save();
+    console.log(`Updated ${user.username} to SuperAdmin access`);
   }
 }
 
@@ -294,10 +184,9 @@ async function initAppData() {
   const legacyShop = await findOrCreateLegacyShop();
 
   await backfillShopOwnership(legacyShop.id);
-  await normalizeUserConstraints();
   await backfillMissingUsernames(User);
   await User.update({ role: 'Staff' }, { where: { role: { [Op.in]: ['Cashier', 'Manager'] } } });
-  await User.update({ isVerified: true }, { where: {} });
+  // NOTE: do NOT blanket-verify all users here — unverified users must click their email link
 
   const defaultSettings = await Setting.findOne({ where: { shopId: legacyShop.id } });
   if (!defaultSettings) {
@@ -330,15 +219,14 @@ module.exports = {
   sequelize,
   Shop,
   User,
-  Customer,
   Audit,
   StockReconciliation,
+  Customer,
   DayClosure,
   Product,
   Sale,
   SaleItem,
   Receipt,
-  ShopActivity,
   Setting,
   Expense,
   StockIn,

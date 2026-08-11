@@ -56,7 +56,6 @@ Audit.init(
     modelName: 'Audit',
     tableName: 'audits',
     timestamps: false,
-    underscored: false,
     indexes: [
       { fields: ['shopId', 'createdAt'] },
       { fields: ['userId'] },

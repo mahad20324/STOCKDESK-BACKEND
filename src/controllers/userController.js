@@ -2,21 +2,7 @@ const bcrypt = require('bcrypt');
 const { User } = require('../models');
 const { normalizeUsername } = require('../utils/username');
 
-const MANAGEABLE_DISPLAY_ROLES = ['Admin', 'Manager', 'Cashier'];
-
-function toDisplayRole(user) {
-  const tokenPrefix = typeof user.verificationToken === 'string'
-    ? user.verificationToken.split(':', 1)[0]
-    : null;
-
-  return ['Admin', 'Manager', 'Cashier'].includes(tokenPrefix)
-    ? tokenPrefix
-    : (user.role === 'Admin' ? 'Admin' : 'Cashier');
-}
-
-function toAccessRole(displayRole) {
-  return displayRole === 'Admin' ? 'Admin' : 'Staff';
-}
+const MANAGEABLE_SHOP_ROLES = ['Admin', 'Staff'];
 
 exports.listUsers = async (req, res, next) => {
   try {
@@ -25,19 +11,8 @@ exports.listUsers = async (req, res, next) => {
       attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
       order: [['createdAt', 'ASC']],
     });
-    res.json(users.map((user) => ({
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      role: user.role,
-      displayRole: toDisplayRole(user),
-      createdAt: user.createdAt,
-      shopId: user.shopId,
-    })));
+    res.json(users);
   } catch (error) {
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ message: 'Username is already in use. Choose a different username.' });
-    }
     next(error);
   }
 };
@@ -49,34 +24,26 @@ exports.getUser = async (req, res, next) => {
       attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
     });
     if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json({
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      role: user.role,
-      displayRole: toDisplayRole(user),
-      createdAt: user.createdAt,
-      shopId: user.shopId,
-    });
+    res.json(user);
   } catch (error) {
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ message: 'Username is already in use. Choose a different username.' });
-    }
     next(error);
   }
 };
 
 exports.createUser = async (req, res, next) => {
   try {
-    const name = req.body.name ? String(req.body.name).trim() : '';
     const username = normalizeUsername(req.body.username);
     const password = req.body.password ? String(req.body.password) : '';
-    const displayRole = req.body.displayRole || req.body.role || 'Cashier';
+    const confirmPassword = req.body.confirmPassword ? String(req.body.confirmPassword) : '';
+    const role = req.body.role || 'Staff';
 
-    if (!name || !username || !password) {
-      return res.status(400).json({ message: 'Name, username, and password are required' });
+    if (!username || !password || !confirmPassword) {
+      return res.status(400).json({ message: 'Username, password, and confirm password are required' });
     }
-    if (!MANAGEABLE_DISPLAY_ROLES.includes(displayRole)) {
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match' });
+    }
+    if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
       return res.status(400).json({ message: 'Invalid role selected' });
     }
 
@@ -87,26 +54,21 @@ exports.createUser = async (req, res, next) => {
 
     const hash = await bcrypt.hash(password, 10);
     const user = await User.create({
-      name,
+      name: username,
       username,
       email: null,
       password: hash,
-      role: toAccessRole(displayRole),
+      role,
       shopId: req.user.shopId,
       isVerified: true,
       verificationToken: null,
     });
-
-    user.verificationToken = `${displayRole}:${user.id}`;
-    await user.save();
-
     // Return plaintext password to admin only (visible in response)
     res.status(201).json({
       id: user.id,
       name: user.name,
       username: user.username,
       role: user.role,
-      displayRole,
       shopId: user.shopId,
       plainPassword: password,
     });
@@ -120,7 +82,7 @@ exports.updateUser = async (req, res, next) => {
     const user = await User.findOne({ where: { id: req.params.id, shopId: req.user.shopId } });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const { name, username, displayRole, role } = req.body;
+    const { username, role } = req.body;
     if (username !== undefined) {
       const normalizedUsername = normalizeUsername(username);
       if (!normalizedUsername) {
@@ -136,25 +98,17 @@ exports.updateUser = async (req, res, next) => {
         return res.status(409).json({ message: 'Username is already in use for this shop' });
       }
       user.username = normalizedUsername;
+      user.name = normalizedUsername;
     }
-    if (name !== undefined) {
-      const normalizedName = String(name).trim();
-      if (!normalizedName) {
-        return res.status(400).json({ message: 'Name is required' });
-      }
-      user.name = normalizedName;
-    }
-    const nextDisplayRole = displayRole || role;
-    if (nextDisplayRole) {
-      if (!MANAGEABLE_DISPLAY_ROLES.includes(nextDisplayRole)) {
+    if (role) {
+      if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
         return res.status(400).json({ message: 'Invalid role selected' });
       }
-      user.role = toAccessRole(nextDisplayRole);
-      user.verificationToken = `${nextDisplayRole}:${user.id}`;
+      user.role = role;
     }
     await user.save();
 
-    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, displayRole: toDisplayRole(user), shopId: user.shopId });
+    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, shopId: user.shopId });
   } catch (error) {
     next(error);
   }

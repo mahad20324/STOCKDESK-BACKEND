@@ -1,4 +1,4 @@
-const { Sale, SaleItem, Product, User, Expense, Customer } = require('../models');
+const { Sale, SaleItem, Product, User, Expense } = require('../models');
 const { fn, col, Op } = require('sequelize');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getMetricsForRange } = require('../utils/businessMetrics');
 
@@ -142,24 +142,42 @@ exports.rangeReport = async (req, res, next) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ message: 'start and end query params required' });
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    endDate.setHours(23, 59, 59, 999);
-    const metrics = await getMetricsForRange(req.user.shopId, startDate, endDate);
-    const sales = await Sale.findAll({
-      where: { shopId: req.user.shopId, createdAt: { [Op.between]: [startDate, endDate] } },
-      include: [
-        { model: User, as: 'cashier', attributes: ['id', 'name'] },
-        { model: Customer, as: 'customer', attributes: ['id', 'name'] },
-      ],
-      order: [['createdAt', 'DESC']],
+
+    const rangeStart = startOfDay(new Date(start));
+    const rangeEnd = endOfDay(new Date(end));
+
+    const [metrics, sales, topProducts] = await Promise.all([
+      getMetricsForRange(req.user.shopId, rangeStart, rangeEnd),
+      Sale.findAll({
+        where: { shopId: req.user.shopId, createdAt: { [Op.gte]: rangeStart, [Op.lte]: rangeEnd } },
+        include: [
+          { model: User, as: 'cashier', attributes: ['id', 'name'] },
+          { model: SaleItem, as: 'items', required: false, include: [{ model: Product, attributes: ['id', 'name', 'buyPrice'] }] },
+        ],
+        order: [['createdAt', 'DESC']],
+      }),
+      SaleItem.findAll({
+        where: { shopId: req.user.shopId },
+        attributes: ['productId', [fn('SUM', col('SaleItem.quantity')), 'unitsSold'], [fn('SUM', col('SaleItem.price')), 'revenue']],
+        include: [
+          { model: Sale, attributes: [], where: { shopId: req.user.shopId, createdAt: { [Op.gte]: rangeStart, [Op.lte]: rangeEnd } }, required: true },
+          { model: Product, attributes: ['id', 'name', 'buyPrice'], required: false },
+        ],
+        group: ['SaleItem.productId', 'Product.id'],
+        order: [[fn('SUM', col('SaleItem.quantity')), 'DESC']],
+        limit: 10,
+      }),
+    ]);
+
+    const expensesInRange = await Expense.findAll({
+      where: { shopId: req.user.shopId, date: { [Op.gte]: start, [Op.lte]: end } },
     });
-    const expenseRows = await Expense.findAll({
-      where: { shopId: req.user.shopId, date: { [Op.between]: [start, end] } },
-    });
-    const totalExpenses = expenseRows.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-    res.json({ metrics, sales, totalExpenses, start, end });
-  } catch (err) { next(err); }
+    const totalExpenses = expensesInRange.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+
+    res.json({ metrics, sales, topProducts, totalExpenses, start, end });
+  } catch (error) {
+    next(error);
+  }
 };
 
 exports.customerSales = async (req, res, next) => {
@@ -167,11 +185,14 @@ exports.customerSales = async (req, res, next) => {
     const sales = await Sale.findAll({
       where: { shopId: req.user.shopId, customerId: req.params.customerId },
       include: [
-        { model: SaleItem, as: 'items', include: [{ model: Product, attributes: ['id', 'name'] }] },
+        { model: SaleItem, as: 'items', required: false, include: [{ model: Product, attributes: ['id', 'name'] }] },
         { model: User, as: 'cashier', attributes: ['id', 'name'] },
       ],
       order: [['createdAt', 'DESC']],
+      limit: 50,
     });
     res.json(sales);
-  } catch (err) { next(err); }
+  } catch (error) {
+    next(error);
+  }
 };

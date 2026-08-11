@@ -1,4 +1,5 @@
 const { StockReconciliation, Product, User } = require('../models');
+const auditController = require('./auditController');
 const { Op } = require('sequelize');
 
 // Create stock reconciliation record
@@ -34,12 +35,48 @@ exports.createReconciliation = async (req, res) => {
       reconciliationDate: new Date(),
     });
 
-    // If there's a variance, update the product quantity
+    // Log the action
+    if (auditController && auditController.logAction) {
+      await auditController.logAction(
+        userId,
+        shopId,
+        'CREATE',
+        'STOCK_RECONCILIATION',
+        reconciliation.id,
+        {
+          productId,
+          systemQuantity,
+          physicalQuantity,
+          variance,
+          reason,
+        },
+        req
+      );
+    }
+
+    // If there's a variance, optionally adjust the product quantity
     if (variance !== 0) {
       await Product.update(
         { quantity: physicalQuantity },
         { where: { id: productId } }
       );
+
+      if (auditController && auditController.logAction) {
+        await auditController.logAction(
+          userId,
+          shopId,
+          'UPDATE',
+          'PRODUCT',
+          productId,
+          {
+            field: 'quantity',
+            oldValue: systemQuantity,
+            newValue: physicalQuantity,
+            reason: `Stock reconciliation adjustment (${reason || 'not specified'})`,
+          },
+          req
+        );
+      }
     }
 
     res.status(201).json({
@@ -74,7 +111,7 @@ exports.getReconciliations = async (req, res) => {
         {
           model: Product,
           as: 'product',
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'sku'],
         },
         {
           model: User,
@@ -118,7 +155,7 @@ exports.getReconciliationSummary = async (req, res) => {
         {
           model: Product,
           as: 'product',
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'sku'],
         },
       ],
       attributes: [
@@ -127,7 +164,7 @@ exports.getReconciliationSummary = async (req, res) => {
         [require('sequelize').fn('SUM', require('sequelize').col('variance')), 'totalVariance'],
         [require('sequelize').fn('AVG', require('sequelize').col('variance')), 'avgVariance'],
       ],
-      group: ['productId', 'product.id', 'product.name'],
+      group: ['productId', 'product.id', 'product.name', 'product.sku'],
       raw: true,
       subQuery: false,
       order: [[require('sequelize').literal('totalVariance'), 'DESC']],
@@ -146,17 +183,18 @@ exports.getProductsForReconciliation = async (req, res) => {
     const { shopId } = req.user;
     const { search } = req.query;
 
-    const where = { shopId };
+    const where = { shopId, isActive: true };
 
     if (search) {
       where[Op.or] = [
         { name: { [Op.iLike]: `%${search}%` } },
+        { sku: { [Op.iLike]: `%${search}%` } },
       ];
     }
 
     const products = await Product.findAll({
       where,
-      attributes: ['id', 'name', 'quantity', 'buyPrice', 'sellPrice'],
+      attributes: ['id', 'name', 'sku', 'quantity', 'buyPrice', 'sellPrice'],
       order: [['name', 'ASC']],
       limit: 100,
     });

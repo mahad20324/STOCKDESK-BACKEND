@@ -1,32 +1,42 @@
 const { StockIn, Product, User } = require('../models');
-const { logAction } = require('./auditController');
 
 exports.restockProduct = async (req, res, next) => {
+  const transaction = await Product.sequelize.transaction();
   try {
-    const product = await Product.findOne({ where: { id: req.params.id, shopId: req.user.shopId } });
+    const product = await Product.findOne({ where: { id: req.params.id, shopId: req.user.shopId }, transaction });
     if (!product) return res.status(404).json({ message: 'Product not found' });
+
     const { quantity, costPrice, supplier, notes } = req.body;
-    if (!quantity || quantity <= 0) return res.status(400).json({ message: 'Quantity must be positive' });
-    product.quantity = Number(product.quantity) + Number(quantity);
-    if (costPrice) product.buyPrice = costPrice;
-    await product.save();
-    const stockIn = await StockIn.create({
-      productId: product.id,
-      quantity: Number(quantity),
-      costPrice: costPrice || null,
-      supplier: supplier || null,
-      notes: notes || null,
-      addedByUserId: req.user.id,
-      shopId: req.user.shopId,
-    });
-    logAction(req.user.id, req.user.shopId, 'CREATE', 'STOCK_IN', stockIn.id, {
-      productId: product.id,
-      productName: product.name,
-      quantity,
-      supplier: supplier || null,
-    }, req);
-    res.json({ message: 'Stock updated', product });
-  } catch (err) { next(err); }
+    if (!quantity || Number(quantity) <= 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'quantity must be a positive number' });
+    }
+
+    product.quantity += Number(quantity);
+    if (costPrice !== undefined && costPrice !== null && costPrice !== '') {
+      product.buyPrice = parseFloat(costPrice);
+    }
+    await product.save({ transaction });
+
+    const stockIn = await StockIn.create(
+      {
+        productId: product.id,
+        quantity: Number(quantity),
+        costPrice: costPrice !== undefined ? parseFloat(costPrice) : null,
+        supplier: supplier || null,
+        notes: notes || null,
+        addedByUserId: req.user.id,
+        shopId: req.user.shopId,
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+    res.status(201).json({ stockIn, newQuantity: product.quantity });
+  } catch (error) {
+    await transaction.rollback();
+    next(error);
+  }
 };
 
 exports.stockHistory = async (req, res, next) => {
@@ -35,7 +45,10 @@ exports.stockHistory = async (req, res, next) => {
       where: { productId: req.params.id, shopId: req.user.shopId },
       include: [{ model: User, as: 'addedBy', attributes: ['id', 'name'] }],
       order: [['createdAt', 'DESC']],
+      limit: 50,
     });
     res.json(history);
-  } catch (err) { next(err); }
+  } catch (error) {
+    next(error);
+  }
 };

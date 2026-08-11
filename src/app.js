@@ -1,13 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const packageJson = require('../package.json');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const customerRoutes = require('./routes/customers');
 const productRoutes = require('./routes/products');
 const saleRoutes = require('./routes/sales');
 const settingsRoutes = require('./routes/settings');
+const shopsRoutes = require('./routes/shops');
 const reportRoutes = require('./routes/reports');
 const printerRoutes = require('./routes/printer');
 const adminRoutes = require('./routes/admin');
@@ -15,18 +15,14 @@ const expenseRoutes = require('./routes/expenses');
 const auditRoutes = require('./routes/audit');
 const stockReconciliationRoutes = require('./routes/stockReconciliation');
 const { errorHandler } = require('./middleware/errorHandler');
-const { getRuntimeHealth } = require('./state/runtime');
 
 const app = express();
 
-app.disable('x-powered-by');
+// Trust Railway / Vercel / any reverse proxy — needed so rate limiter
+// uses the real client IP (from X-Forwarded-For) instead of the proxy IP.
+// Without this, all users share one rate-limit bucket and one person's failed
+// attempts will block everyone.
 app.set('trust proxy', 1);
-
-app.use((req, res, next) => {
-  res.set('X-Content-Type-Options', 'nosniff');
-  res.set('Referrer-Policy', 'same-origin');
-  next();
-});
 
 function escapeRegex(value) {
   return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
@@ -72,80 +68,58 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+app.use(express.json());
 
-app.get('/api', (req, res) => {
-  const health = getRuntimeHealth();
-
-  res.json({
-    message: 'Backend is running',
-    status: health.status,
-    healthPath: '/api/health',
-    version: packageJson.version,
-  });
+// Rate limiting — generous limits to avoid blocking legitimate users
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many signup attempts. Please wait before trying again.' },
+  skipSuccessfulRequests: true, // only count failed attempts
 });
 
-app.get('/api/health', (req, res) => {
-  const health = getRuntimeHealth();
-  const statusCode = health.status === 'ready' ? 200 : health.status === 'error' ? 503 : 202;
-
-  res.status(statusCode).json({
-    ...health,
-    version: packageJson.version,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// ─── Rate limiters ───────────────────────────────────────────
-// Strict limit on auth endpoints to prevent brute-force attacks
-const authLimiter = rateLimit({
+const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many login attempts. Please try again in 15 minutes.' },
-  skipSuccessfulRequests: true, // only count failures
+  message: { message: 'Too many login attempts. Please wait before trying again.' },
+  skipSuccessfulRequests: true,
 });
 
-// General API limit — generous for normal multi-tab usage
-const apiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 200,
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many requests. Please slow down.' },
+  message: { message: 'Too many requests. Please wait before trying again.' },
 });
 
-// Heavier endpoints (PDF generation, reports)
-const heavyLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Too many requests for this resource. Please wait a moment.' },
+app.get('/api', (req, res) => {
+  res.json({ message: 'Backend is running', status: 'OK' });
 });
 
-app.use('/api/auth', authLimiter);
-app.use('/api/sales/:id/receipt', heavyLimiter);
-app.use('/api/reports', heavyLimiter);
-app.use('/api', apiLimiter);
+// Apply rate limiters to specific auth routes before the router
+app.post('/api/auth/signup', signupLimiter);
+app.post('/api/auth/login', loginLimiter);
+app.post('/api/auth/forgot-password', authLimiter);
+app.post('/api/auth/resend-verification', authLimiter);
 
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);app.use('/api/customers', customerRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/shops', shopsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/printer', printerRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/stock-reconciliation', stockReconciliationRoutes);
-
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-})
 
 app.use(errorHandler);
 

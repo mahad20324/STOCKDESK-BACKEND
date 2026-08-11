@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 // Ensure `fetch` is available (Node 18+). Fallback to `node-fetch` when running on older Node.
 let fetchFn = global.fetch;
@@ -97,32 +98,14 @@ async function sendViaResend({ to, subject, html, text }) {
     throw new Error('SMTP_FROM_EMAIL is required for Resend email delivery.');
   }
 
-  if (!fetchFn) {
-    throw new Error('Global `fetch` is not available. Use Node 18+ or install `node-fetch`.');
-  }
-
-  const response = await fetchFn('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      from: `${fromName} <${fromEmail}>`,
-      to: [to],
-      subject,
-      html,
-      ...(text ? { text } : {}),
-    }),
+  const resend = new Resend(apiKey);
+  await resend.emails.send({
+    from: `${fromName} <${fromEmail}>`,
+    to,
+    subject,
+    html,
+    ...(text ? { text } : {}),
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    const err = new Error(`Resend API error ${response.status}: ${body}`);
-    err.status = 502;
-    throw err;
-  }
 }
 
 async function sendEmail(payload) {
@@ -202,6 +185,10 @@ async function sendPasswordResetEmail(to, token) {
   });
 }
 
-console.log(`[emailService] Provider on boot: ${getProvider()}`);
+try {
+  console.log(`[emailService] Provider on boot: ${getProvider()}`);
+} catch (error) {
+  console.log(`[emailService] Provider on boot: unavailable (${error.message})`);
+}
 
 module.exports = { sendVerificationEmail, sendPasswordResetEmail };

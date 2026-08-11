@@ -1,12 +1,13 @@
 FROM node:22-alpine
 
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
-RUN apk add --no-cache python3 make g++ libusb-dev build-base
+COPY package*.json ./
 
-COPY package*.json .npmrc ./
-RUN npm set unsafe-perm true && npm install --omit=dev --no-optional
+RUN npm install --omit=dev
 
 COPY . .
 
-CMD ["node", "src/server.js"]
+CMD ["npm", "start"]

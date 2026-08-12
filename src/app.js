@@ -8,7 +8,6 @@ const productRoutes = require('./routes/products');
 const saleRoutes = require('./routes/sales');
 const settingsRoutes = require('./routes/settings');
 const reportRoutes = require('./routes/reports');
-const printerRoutes = require('./routes/printer');
 const adminRoutes = require('./routes/admin');
 const expenseRoutes = require('./routes/expenses');
 const auditRoutes = require('./routes/audit');
@@ -16,6 +15,17 @@ const stockReconciliationRoutes = require('./routes/stockReconciliation');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
+
+// Printer routes depend on native modules (escpos-usb) that may not be
+// installable in every deployment environment (e.g. Railway containers).
+// Load them optionally so the rest of the API stays available even if
+// printer support fails to load.
+let printerRoutes = null;
+try {
+  printerRoutes = require('./routes/printer');
+} catch (error) {
+  console.warn('Printer routes disabled: failed to load printer module.', error.message);
+}
 
 // Trust Railway / Vercel / any reverse proxy — needed so rate limiter
 // uses the real client IP (from X-Forwarded-For) instead of the proxy IP.
@@ -113,7 +123,13 @@ app.use('/api/products', productRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/printer', printerRoutes);
+if (printerRoutes) {
+  app.use('/api/printer', printerRoutes);
+} else {
+  app.use('/api/printer', (req, res) => {
+    res.status(503).json({ error: 'Printer functionality is unavailable on this deployment' });
+  });
+}
 app.use('/api/admin', adminRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/audit', auditRoutes);

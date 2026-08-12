@@ -1,6 +1,12 @@
 const escpos = require('escpos');
-const USB = require('escpos-usb');
 const Network = require('escpos-network');
+
+let USB = null;
+try {
+  USB = require('escpos-usb');
+} catch (error) {
+  console.warn('escpos-usb module is not available. USB printer support is disabled.');
+}
 
 class PrinterService {
   constructor() {
@@ -36,6 +42,9 @@ class PrinterService {
    * @private
    */
   _connectUSB(settings) {
+    if (!USB) {
+      throw new Error('USB printer support is not available on this server. Please use a network printer instead.');
+    }
     const { vendorId = 0x04b8, productId = 0x0202 } = settings;
     const device = new USB.USB(vendorId, productId);
     this.printer = new escpos.Printer(device);

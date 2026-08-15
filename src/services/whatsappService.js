@@ -81,10 +81,62 @@ async function sendTextViaTwilio({ fromNumber, toNumber, body }) {
   return twilioClient.messages.create({ from, to, body });
 }
 
+function hasPdfHosting() {
+  return !!(s3Client || process.env.MEDIA_BASE_URL);
+}
+
+function buildTextReceipt(sale, settings = {}) {
+  const currency = sale.currency || settings.currency || 'USD';
+  const money = (value) => `${currency} ${Number(value || 0).toFixed(2)}`;
+
+  const items = sale.items || [];
+  const subtotal = items.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+  const discount = Number(sale.discount || 0);
+  const total = Number(sale.total || (subtotal - discount));
+  const vatRate = Number(settings.vat || 0);
+  const vat = vatRate > 0 ? Number(((total * vatRate) / (1 + vatRate)).toFixed(2)) : 0;
+
+  const receiptNumber = sale.receipt?.receiptNumber || sale.id;
+  const date = sale.createdAt ? new Date(sale.createdAt).toLocaleString() : '';
+
+  const lines = [];
+  lines.push(`*${settings.shopName || 'StockDesk'}*`);
+  if (settings.address) lines.push(settings.address);
+  if (settings.phone) lines.push(settings.phone);
+  lines.push('');
+  lines.push(`Receipt: #${receiptNumber}`);
+  if (date) lines.push(date);
+  lines.push('--------------------------------');
+  items.forEach((item) => {
+    const name = item.Product?.name || item.name || 'Item';
+    lines.push(`${item.quantity} x ${name}`);
+    lines.push(`    ${money(Number(item.price) * Number(item.quantity))}`);
+  });
+  lines.push('--------------------------------');
+  lines.push(`Subtotal: ${money(subtotal)}`);
+  if (discount > 0) lines.push(`Discount: -${money(discount)}`);
+  if (vatRate > 0) lines.push(`VAT @ ${vatRate}%: ${money(vat)}`);
+  lines.push(`*TOTAL: ${money(total)}*`);
+  lines.push('--------------------------------');
+  if (sale.paymentMethod) lines.push(`Payment: ${sale.paymentMethod}`);
+  if (sale.cashier?.username) lines.push(`Cashier: ${sale.cashier.username}`);
+  lines.push('');
+  lines.push('Thank you!');
+  if (settings.receiptFooter) lines.push(settings.receiptFooter);
+
+  return lines.join('\n');
+}
+
 module.exports = {
   sendReceipt: async ({ provider = 'twilio', fromNumber, toNumber, sale, settings }) => {
     if (provider !== 'twilio') throw new Error('Only Twilio provider is implemented');
-    return sendReceiptViaTwilio({ fromNumber, toNumber, sale, settings });
+
+    if (hasPdfHosting()) {
+      return sendReceiptViaTwilio({ fromNumber, toNumber, sale, settings });
+    }
+
+    const body = buildTextReceipt(sale, settings);
+    return sendTextViaTwilio({ fromNumber, toNumber, body });
   },
   sendText: async ({ provider = 'twilio', fromNumber, toNumber, body }) => {
     if (provider !== 'twilio') throw new Error('Only Twilio provider is implemented');

@@ -42,7 +42,7 @@ function patternToRegex(pattern) {
 
 function getAllowedOrigins() {
   const configuredOrigins = (process.env.CORS_ORIGINS || '')
-    .split(',')
+    .split(/[\s,]+/)
     .map((origin) => origin.trim())
     .filter(Boolean);
 
@@ -53,7 +53,7 @@ function getAllowedOrigins() {
 
 function getAllowedOriginPatterns() {
   return (process.env.CORS_ORIGIN_PATTERNS || '')
-    .split(',')
+    .split(/[\s,]+/)
     .map((pattern) => pattern.trim())
     .filter(Boolean)
     .map(patternToRegex);

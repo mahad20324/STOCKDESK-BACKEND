@@ -43,6 +43,12 @@ function getFrontendUrl() {
   return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
 }
 
+function getBrandLogoUrl() {
+  const custom = (process.env.BRAND_LOGO_URL || '').trim();
+  if (custom) return custom;
+  return `${getFrontendUrl()}/logo.png`;
+}
+
 function buildVerificationUrl(token) {
   return `${getFrontendUrl()}/verify-email?token=${encodeURIComponent(token)}`;
 }
@@ -154,9 +160,9 @@ async function sendVerificationEmail(to, token, { name, shopName } = {}) {
     html: `
       <div style="font-family:Segoe UI,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a">
         <div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
-          <div style="background:linear-gradient(135deg,#0f766e,#1f7a8c);padding:28px 32px;color:#fff">
-            <div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.8">StockDesk</div>
-            <h1 style="margin:10px 0 0;font-size:26px">Verify Your Email</h1>
+          <div style="background:linear-gradient(135deg,#0f766e,#1f7a8c);padding:24px 32px;color:#fff;text-align:center">
+            <img src="${getBrandLogoUrl()}" alt="StockDesk" width="220" style="display:block;margin:0 auto 14px;max-width:220px;height:auto;border-radius:10px;background:#ffffff;padding:8px 14px" />
+            <h1 style="margin:0;font-size:26px">Verify Your Email</h1>
             <p style="margin:10px 0 0;font-size:14px;opacity:.9">Activate administrator access for ${displayShop}</p>
           </div>
           <div style="padding:32px">
@@ -185,9 +191,9 @@ async function sendPasswordResetEmail(to, token) {
     html: `
       <div style="font-family:Segoe UI,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a">
         <div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
-          <div style="background:linear-gradient(135deg,#0f766e,#1f7a8c);padding:28px 32px;color:#fff">
-            <div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.8">StockDesk</div>
-            <h1 style="margin:10px 0 0;font-size:26px">Reset Your Password</h1>
+          <div style="background:linear-gradient(135deg,#0f766e,#1f7a8c);padding:24px 32px;color:#fff;text-align:center">
+            <img src="${getBrandLogoUrl()}" alt="StockDesk" width="220" style="display:block;margin:0 auto 14px;max-width:220px;height:auto;border-radius:10px;background:#ffffff;padding:8px 14px" />
+            <h1 style="margin:0;font-size:26px">Reset Your Password</h1>
             <p style="margin:10px 0 0;font-size:14px;opacity:.9">This link expires in 1 hour</p>
           </div>
           <div style="padding:32px">

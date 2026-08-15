@@ -15,43 +15,62 @@ const { sequelize, initAppData } = require('./models');
 async function runMigrations() {
   // Add 'Split' to paymentMethod enum if it doesn't exist yet
   // Sequelize alter:true cannot add values to existing PostgreSQL ENUMs
-  await sequelize.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1
-        FROM pg_type
-        WHERE typname = 'enum_sales_paymentMethod'
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM pg_enum
-        WHERE enumlabel = 'Split'
-          AND enumtypid = (
-            SELECT oid
-            FROM pg_type
-            WHERE typname = 'enum_sales_paymentMethod'
-          )
-      ) THEN
-        ALTER TYPE "enum_sales_paymentMethod" ADD VALUE 'Split';
-      END IF;
-    END $$;
-  `).catch(() => {});
+  try {
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM pg_type
+          WHERE typname = 'enum_sales_paymentMethod'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pg_enum
+          WHERE enumlabel = 'Split'
+            AND enumtypid = (
+              SELECT oid
+              FROM pg_type
+              WHERE typname = 'enum_sales_paymentMethod'
+            )
+        ) THEN
+          ALTER TYPE "enum_sales_paymentMethod" ADD VALUE 'Split';
+        END IF;
+      END $$;
+    `);
+    console.log('[migrations] Enum migration completed successfully');
+  } catch (error) {
+    console.error('[migrations] Enum migration failed:', error.message);
+  }
+}
+
+async function initializeDatabase() {
+  try {
+    console.log('[db-init] Starting background database initialization...');
+    await runMigrations();
+    console.log('[db-init] Running Sequelize sync...');
+    await sequelize.sync({ alter: true });
+    console.log('[db-init] Initializing application data...');
+    await initAppData();
+    console.log('[db-init] Database initialization completed successfully');
+  } catch (error) {
+    console.error('[db-init] Background database initialization failed:', error.message);
+  }
 }
 
 async function start() {
   try {
+    console.log('[startup] Verifying database connection...');
     await sequelize.authenticate();
-    await runMigrations();
-    await sequelize.sync({ alter: true });
-    await initAppData();
-    console.log('Database initialized');
+    console.log('[startup] Database connection verified');
 
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`StockDesk backend running on port ${PORT}`);
+      console.log(`[startup] StockDesk backend listening on port ${PORT}`);
     });
+
+    setImmediate(initializeDatabase);
   } catch (error) {
-    console.error('Database initialization failed:', error);
+    console.error('[startup] Failed to verify database connection:', error.message);
     process.exit(1);
   }
 }

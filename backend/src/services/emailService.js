@@ -1,22 +1,16 @@
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 
-// Ensure `fetch` is available (Node 18+). Fallback to `node-fetch` when running on older Node.
 let fetchFn = global.fetch;
 if (!fetchFn) {
   try {
-    // node-fetch v3 is ESM; when required from CommonJS it may be the default export.
-    // Guard with (module.default || module) to handle both shapes.
     // eslint-disable-next-line global-require
     const nodeFetch = require('node-fetch');
     fetchFn = nodeFetch.default || nodeFetch;
   } catch (err) {
-    // leave fetchFn undefined; we'll surface a helpful error if it's needed at runtime
     fetchFn = undefined;
   }
 }
-
-// ── Provider selection ────────────────────────────────────────────────────────
 
 function getProvider() {
   const configured = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
@@ -37,8 +31,6 @@ function getProvider() {
   throw new Error('No email provider is configured. Set RESEND_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM_EMAIL.');
 }
 
-// ── URL helpers ───────────────────────────────────────────────────────────────
-
 function getFrontendUrl() {
   return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
 }
@@ -50,8 +42,6 @@ function buildVerificationUrl(token) {
 function buildResetUrl(token) {
   return `${getFrontendUrl()}/reset-password?token=${encodeURIComponent(token)}`;
 }
-
-// ── SMTP transport ────────────────────────────────────────────────────────────
 
 function createSmtpTransporter() {
   const host = process.env.SMTP_HOST;
@@ -105,8 +95,6 @@ async function sendViaSmtp({ to, subject, html, text }) {
   });
 }
 
-// ── Resend API transport ───────────────────────────────────────────────────────
-
 async function sendViaResend({ to, subject, html, text }) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromName = getFromName();
@@ -140,8 +128,6 @@ async function sendEmail(payload) {
     throw new Error(`Unsupported email provider: ${provider}`);
   }
 }
-
-// ── Public API ────────────────────────────────────────────────────────────────
 
 async function sendVerificationEmail(to, token, { name, shopName } = {}) {
   const url = buildVerificationUrl(token);

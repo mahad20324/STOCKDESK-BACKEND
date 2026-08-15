@@ -70,7 +70,6 @@ exports.createUser = async (req, res, next) => {
       username: user.username,
       role: user.role,
       shopId: user.shopId,
-      plainPassword: password,
     });
   } catch (error) {
     next(error);
@@ -136,7 +135,6 @@ exports.resetPassword = async (req, res, next) => {
       message: 'Password reset successfully.',
       id: user.id,
       username: user.username,
-      plainPassword: password,
     });
   } catch (error) {
     next(error);

@@ -1,5 +1,5 @@
 const { StockReconciliation, Product, User } = require('../models');
-const { auditController } = require('./index');
+const auditController = require('./auditController');
 const { Op } = require('sequelize');
 
 // Create stock reconciliation record
@@ -58,7 +58,7 @@ exports.createReconciliation = async (req, res) => {
     if (variance !== 0) {
       await Product.update(
         { quantity: physicalQuantity },
-        { where: { id: productId } }
+        { where: { id: productId, shopId } }
       );
 
       if (auditController && auditController.logAction) {

@@ -13,5 +13,6 @@ router.put('/:id', authenticate, authorize(['Admin']), productController.updateP
 router.delete('/:id', authenticate, authorize(['Admin']), productController.deleteProduct);
 router.post('/:id/restock', authenticate, authorize(['Admin']), stockInController.restockProduct);
 router.get('/:id/stock-history', authenticate, stockInController.stockHistory);
+router.post('/restock-category', authenticate, authorize(['Admin']), productController.bulkRestockByCategory);
 
 module.exports = router;

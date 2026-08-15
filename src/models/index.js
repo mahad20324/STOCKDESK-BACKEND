@@ -19,29 +19,29 @@ const StockReconciliation = require('./stockReconciliation');
 const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
-Shop.hasMany(User, { foreignKey: 'shopId', as: 'users' });
-User.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(User, { foreignKey: 'shopId', as: 'users', onDelete: 'CASCADE', hooks: true });
+User.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(Customer, { foreignKey: 'shopId', as: 'customers' });
-Customer.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Customer, { foreignKey: 'shopId', as: 'customers', onDelete: 'CASCADE', hooks: true });
+Customer.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(DayClosure, { foreignKey: 'shopId', as: 'dayClosures' });
-DayClosure.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(DayClosure, { foreignKey: 'shopId', as: 'dayClosures', onDelete: 'CASCADE', hooks: true });
+DayClosure.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(Product, { foreignKey: 'shopId', as: 'products' });
-Product.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Product, { foreignKey: 'shopId', as: 'products', onDelete: 'CASCADE', hooks: true });
+Product.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(Sale, { foreignKey: 'shopId', as: 'sales' });
-Sale.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Sale, { foreignKey: 'shopId', as: 'sales', onDelete: 'CASCADE', hooks: true });
+Sale.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(SaleItem, { foreignKey: 'shopId', as: 'saleItems' });
-SaleItem.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(SaleItem, { foreignKey: 'shopId', as: 'saleItems', onDelete: 'CASCADE', hooks: true });
+SaleItem.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasMany(Receipt, { foreignKey: 'shopId', as: 'receipts' });
-Receipt.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Receipt, { foreignKey: 'shopId', as: 'receipts', onDelete: 'CASCADE', hooks: true });
+Receipt.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
-Shop.hasOne(Setting, { foreignKey: 'shopId', as: 'settings' });
-Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasOne(Setting, { foreignKey: 'shopId', as: 'settings', onDelete: 'CASCADE', hooks: true });
+Setting.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
 User.hasMany(Sale, { foreignKey: 'cashierId', as: 'sales' });
 Sale.belongsTo(User, { foreignKey: 'cashierId', as: 'cashier' });
@@ -61,12 +61,12 @@ SaleItem.belongsTo(Product, { foreignKey: 'productId' });
 Sale.hasOne(Receipt, { foreignKey: 'saleId', as: 'receipt' });
 Receipt.belongsTo(Sale, { foreignKey: 'saleId' });
 
-Shop.hasMany(Expense, { foreignKey: 'shopId', as: 'expenses' });
-Expense.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Expense, { foreignKey: 'shopId', as: 'expenses', onDelete: 'CASCADE', hooks: true });
+Expense.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 Expense.belongsTo(User, { foreignKey: 'recordedByUserId', as: 'recordedBy' });
 
-Shop.hasMany(StockIn, { foreignKey: 'shopId', as: 'stockIns' });
-StockIn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(StockIn, { foreignKey: 'shopId', as: 'stockIns', onDelete: 'CASCADE', hooks: true });
+StockIn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 StockIn.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 Product.hasMany(StockIn, { foreignKey: 'productId', as: 'stockIns' });
 StockIn.belongsTo(User, { foreignKey: 'addedByUserId', as: 'addedBy' });
@@ -74,8 +74,8 @@ StockIn.belongsTo(User, { foreignKey: 'addedByUserId', as: 'addedBy' });
 Sale.hasMany(SaleReturn, { foreignKey: 'saleId', as: 'returns' });
 SaleReturn.belongsTo(Sale, { foreignKey: 'saleId', as: 'sale' });
 SaleReturn.belongsTo(User, { foreignKey: 'processedByUserId', as: 'processedBy' });
-Shop.hasMany(SaleReturn, { foreignKey: 'shopId', as: 'saleReturns' });
-SaleReturn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(SaleReturn, { foreignKey: 'shopId', as: 'saleReturns', onDelete: 'CASCADE', hooks: true });
+SaleReturn.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 
 SaleReturn.hasMany(SaleReturnItem, { foreignKey: 'returnId', as: 'items' });
 SaleReturnItem.belongsTo(SaleReturn, { foreignKey: 'returnId' });
@@ -83,13 +83,13 @@ SaleReturnItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 Product.hasMany(SaleReturnItem, { foreignKey: 'productId' });
 
 // Audit relationships
-Shop.hasMany(Audit, { foreignKey: 'shopId', as: 'audits' });
-Audit.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(Audit, { foreignKey: 'shopId', as: 'audits', onDelete: 'CASCADE', hooks: true });
+Audit.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 Audit.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // Stock Reconciliation relationships
-Shop.hasMany(StockReconciliation, { foreignKey: 'shopId', as: 'reconciliations' });
-StockReconciliation.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop' });
+Shop.hasMany(StockReconciliation, { foreignKey: 'shopId', as: 'reconciliations', onDelete: 'CASCADE', hooks: true });
+StockReconciliation.belongsTo(Shop, { foreignKey: 'shopId', as: 'shop', onDelete: 'CASCADE' });
 StockReconciliation.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 StockReconciliation.belongsTo(User, { foreignKey: 'adjustedByUserId', as: 'adjustedBy' });
 

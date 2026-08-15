@@ -1,11 +1,12 @@
 const { Expense, User } = require('../models');
+const { Op } = require('sequelize');
 
 exports.listExpenses = async (req, res, next) => {
   try {
     const { start, end } = req.query;
     const where = { shopId: req.user.shopId };
     if (start && end) {
-      where.date = { $gte: start, $lte: end };
+      where.date = { [Op.gte]: start, [Op.lte]: end };
     }
     const expenses = await Expense.findAll({
       where,

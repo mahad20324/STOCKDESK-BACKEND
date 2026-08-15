@@ -14,6 +14,10 @@ Product.init(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    sku: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     category: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -35,6 +39,11 @@ Product.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 5,
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
     },
     shopId: {
       type: DataTypes.INTEGER,

@@ -13,6 +13,10 @@ function maskEmail(email) {
 }
 
 function signToken(user) {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is required.');
+  }
+
   return jwt.sign(
     { id: user.id, role: user.role, shopId: user.shopId },
     process.env.JWT_SECRET,
@@ -154,7 +158,7 @@ exports.signup = async (req, res, next) => {
       return res.status(409).json({ message: 'Shop name is already in use' });
     }
 
-    const existingEmail = await User.findOne({ where: { email: normalizedEmail }, transaction });
+    const existingEmail = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } }, transaction });
     if (existingEmail) {
       // Check whether the user's shop still exists — if the shop was deleted but the
       // user row wasn't cleaned up (orphaned record), free the email and continue.
@@ -215,16 +219,19 @@ exports.signup = async (req, res, next) => {
       { transaction }
     );
 
-    await transaction.commit();
-
     try {
       await sendVerificationEmail(normalizedEmail, verificationToken, {
         name: normalizedUsername,
         shopName: shop.name,
       });
+      await transaction.commit();
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError.message);
-      // User was created; they can request a resend later
+      await transaction.rollback();
+
+      return res.status(502).json({
+        message: 'Account creation failed because the verification email could not be sent. Please try again.',
+      });
     }
 
     res.status(201).json({
@@ -268,7 +275,7 @@ exports.resendVerification = async (req, res, next) => {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
-    const user = await User.findOne({ where: { email: normalizedEmail } });
+    const user = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } } });
 
     // Always respond with success to avoid email enumeration
     if (!user || user.isVerified) {
@@ -277,7 +284,14 @@ exports.resendVerification = async (req, res, next) => {
 
     const verificationToken = crypto.randomBytes(32).toString('hex');
     await user.update({ verificationToken });
-    await sendVerificationEmail(normalizedEmail, verificationToken);
+    try {
+      await sendVerificationEmail(normalizedEmail, verificationToken);
+    } catch (emailError) {
+      console.error('Failed to resend verification email:', emailError.message);
+      return res.status(502).json({
+        message: 'Unable to send the verification email right now. Please try again later.',
+      });
+    }
 
     res.json({ message: 'A new verification link has been sent to your email address.' });
   } catch (error) {
@@ -293,7 +307,7 @@ exports.forgotPassword = async (req, res, next) => {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
-    const user = await User.findOne({ where: { email: normalizedEmail } });
+    const user = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } } });
 
     // Always respond with success to avoid email enumeration
     if (user) {
@@ -341,6 +355,42 @@ exports.resetPassword = async (req, res, next) => {
 
     res.json({ message: 'Password reset successfully. You can now sign in.' });
   } catch (error) {
+    next(error);
+  }
+};
+
+exports.refreshToken = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const payload = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+    const user = await User.findByPk(payload.id, {
+      include: [{ model: Shop, as: 'shop', attributes: ['id', 'name', 'slug'], required: false }],
+    });
+
+    if (!user || !user.isVerified) {
+      return res.status(401).json({ message: 'Invalid session' });
+    }
+
+    const token = signToken(user);
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        shopId: user.shopId,
+        shop: user.shop || null,
+      },
+    });
+  } catch (error) {
+    if (error.name === 'TokenExpiredError' || error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: 'Invalid session' });
+    }
     next(error);
   }
 };

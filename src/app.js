@@ -7,6 +7,7 @@ const customerRoutes = require('./routes/customers');
 const productRoutes = require('./routes/products');
 const saleRoutes = require('./routes/sales');
 const settingsRoutes = require('./routes/settings');
+const shopsRoutes = require('./routes/shops');
 const reportRoutes = require('./routes/reports');
 const printerRoutes = require('./routes/printer');
 const adminRoutes = require('./routes/admin');
@@ -17,11 +18,19 @@ const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
-// Trust Railway / Vercel / any reverse proxy — needed so rate limiter
-// uses the real client IP (from X-Forwarded-For) instead of the proxy IP.
-// Without this, all users share one rate-limit bucket and one person's failed
-// attempts will block everyone.
+// Security middleware: trust proxy, limit request size
 app.set('trust proxy', 1);
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Security headers: prevent common vulnerabilities
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 function escapeRegex(value) {
   return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
@@ -67,7 +76,6 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json());
 
 // Rate limiting — generous limits to avoid blocking legitimate users
 const signupLimiter = rateLimit({
@@ -112,6 +120,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/shops', shopsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/printer', printerRoutes);
 app.use('/api/admin', adminRoutes);

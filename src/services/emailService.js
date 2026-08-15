@@ -1,9 +1,40 @@
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
+
+// Ensure `fetch` is available (Node 18+). Fallback to `node-fetch` when running on older Node.
+let fetchFn = global.fetch;
+if (!fetchFn) {
+  try {
+    // node-fetch v3 is ESM; when required from CommonJS it may be the default export.
+    // Guard with (module.default || module) to handle both shapes.
+    // eslint-disable-next-line global-require
+    const nodeFetch = require('node-fetch');
+    fetchFn = nodeFetch.default || nodeFetch;
+  } catch (err) {
+    // leave fetchFn undefined; we'll surface a helpful error if it's needed at runtime
+    fetchFn = undefined;
+  }
+}
 
 // ── Provider selection ────────────────────────────────────────────────────────
 
 function getProvider() {
-  return process.env.BREVO_API_KEY ? 'brevo' : 'smtp';
+  const configured = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+  if (configured) {
+    if (['resend', 'smtp'].includes(configured)) {
+      return configured;
+    }
+    throw new Error(`Unsupported EMAIL_PROVIDER "${configured}". Use "resend" or "smtp".`);
+  }
+
+  if (process.env.RESEND_API_KEY) {
+    return 'resend';
+  }
+  const hasSmtp = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD && process.env.SMTP_FROM_EMAIL;
+  if (hasSmtp) {
+    return 'smtp';
+  }
+  throw new Error('No email provider is configured. Set RESEND_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM_EMAIL.');
 }
 
 // ── URL helpers ───────────────────────────────────────────────────────────────
@@ -23,20 +54,47 @@ function buildResetUrl(token) {
 // ── SMTP transport ────────────────────────────────────────────────────────────
 
 function createSmtpTransporter() {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASSWORD;
+
+  if (!host || !user || !pass) {
+    throw new Error('SMTP is not fully configured. Please set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD.');
+  }
+
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    host,
+    port,
     secure: process.env.SMTP_SECURE === 'true',
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD,
+      user,
+      pass,
     },
   });
 }
 
+function getFromName() {
+  return process.env.RESEND_FROM_NAME || process.env.SMTP_FROM_NAME || 'StockDesk';
+}
+
+function getFromEmail(provider) {
+  return (
+    process.env.RESEND_FROM_EMAIL ||
+    process.env.EMAIL_FROM ||
+    process.env.SMTP_FROM_EMAIL ||
+    (provider === 'resend' ? 'onboarding@resend.dev' : '')
+  );
+}
+
 async function sendViaSmtp({ to, subject, html, text }) {
-  const fromName = process.env.SMTP_FROM_NAME || 'StockDesk';
-  const fromEmail = process.env.SMTP_FROM_EMAIL;
+  const fromName = getFromName();
+  const fromEmail = getFromEmail('smtp');
+
+  if (!fromEmail) {
+    throw new Error('SMTP_FROM_EMAIL is required for SMTP email delivery.');
+  }
+
   const transporter = createSmtpTransporter();
   await transporter.sendMail({
     from: `"${fromName}" <${fromEmail}>`,
@@ -47,46 +105,39 @@ async function sendViaSmtp({ to, subject, html, text }) {
   });
 }
 
-// ── Brevo API transport ───────────────────────────────────────────────────────
+// ── Resend API transport ───────────────────────────────────────────────────────
 
-async function sendViaBrevo({ to, subject, html, text }) {
-  const apiKey = process.env.BREVO_API_KEY;
-  const fromName = process.env.SMTP_FROM_NAME || 'StockDesk';
-  const fromEmail = process.env.SMTP_FROM_EMAIL;
+async function sendViaResend({ to, subject, html, text }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromName = getFromName();
+  const fromEmail = getFromEmail('resend');
 
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'api-key': apiKey,
-    },
-    body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: to }],
-      subject,
-      htmlContent: html,
-      ...(text ? { textContent: text } : {}),
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    const err = new Error(`Brevo API error ${response.status}: ${body}`);
-    err.status = 502;
-    throw err;
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY is required for Resend email delivery.');
   }
-}
+  if (!fromEmail) {
+    throw new Error('RESEND_FROM_EMAIL, EMAIL_FROM, or SMTP_FROM_EMAIL is required for Resend email delivery.');
+  }
 
-// ── Dispatch ──────────────────────────────────────────────────────────────────
+  const resend = new Resend(apiKey);
+  await resend.emails.send({
+    from: `${fromName} <${fromEmail}>`,
+    to,
+    subject,
+    html,
+    ...(text ? { text } : {}),
+  });
+}
 
 async function sendEmail(payload) {
   const provider = getProvider();
   console.log(`[emailService] Sending via ${provider} to ${payload.to}`);
-  if (provider === 'brevo') {
-    await sendViaBrevo(payload);
-  } else {
+  if (provider === 'resend') {
+    await sendViaResend(payload);
+  } else if (provider === 'smtp') {
     await sendViaSmtp(payload);
+  } else {
+    throw new Error(`Unsupported email provider: ${provider}`);
   }
 }
 
@@ -155,6 +206,10 @@ async function sendPasswordResetEmail(to, token) {
   });
 }
 
-console.log(`[emailService] Provider on boot: ${getProvider()}`);
+try {
+  console.log(`[emailService] Provider on boot: ${getProvider()}`);
+} catch (error) {
+  console.log(`[emailService] Provider on boot: unavailable (${error.message})`);
+}
 
 module.exports = { sendVerificationEmail, sendPasswordResetEmail };

@@ -126,7 +126,7 @@ async function ensureSuperAdmin() {
     return;
   }
 
-  let user = await User.findOne({ where: { shopId: null, username: configuredUsername } });
+  let user = await User.findOne({ where: { username: configuredUsername } });
 
   if (!user) {
     if (!configuredPassword) {
@@ -159,10 +159,6 @@ async function ensureSuperAdmin() {
 
   if (user.role !== 'SuperAdmin') {
     user.role = 'SuperAdmin';
-    changed = true;
-  }
-  if (user.shopId !== null) {
-    user.shopId = null;
     changed = true;
   }
   if (!user.isVerified) {

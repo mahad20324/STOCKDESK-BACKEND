@@ -11,6 +11,7 @@ if (!process.env.JWT_SECRET) {
 
 const app = require('./app');
 const { sequelize, initAppData } = require('./models');
+const { startAutoCloseScheduler } = require('./utils/autoCloseBusinessDay');
 
 async function runMigrations() {
   // Add 'Split' to paymentMethod enum if it doesn't exist yet
@@ -55,6 +56,7 @@ async function initializeDatabase() {
     console.log('[db-init] Initializing application data...');
     await initAppData();
     console.log('[db-init] Database initialization completed successfully');
+    startAutoCloseScheduler();
   } catch (error) {
     console.error('[db-init] Background database initialization failed:', error.message);
     // Log the failure but do not exit; the app is already listening and may recover

@@ -7,7 +7,6 @@ COPY package*.json ./
 
 # Install build tools and skip optional native modules to avoid node-gyp failures
 RUN apk add --no-cache python3 make g++ libusb-dev build-base \
-	&& npm set unsafe-perm true \
 	&& npm install --omit=dev --omit=optional
 
 COPY . .

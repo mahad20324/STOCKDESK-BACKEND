@@ -16,6 +16,7 @@ const SaleReturn = require('./saleReturn');
 const SaleReturnItem = require('./saleReturnItem');
 const Audit = require('./audit');
 const StockReconciliation = require('./stockReconciliation');
+const PendingSignup = require('./pendingSignup');
 const { backfillMissingUsernames, generateUniqueUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
 
@@ -209,12 +210,16 @@ async function initAppData() {
   }
 
   await ensureSuperAdmin();
+
+  const staleCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  await PendingSignup.destroy({ where: { createdAt: { [Op.lt]: staleCutoff } } });
 }
 
 module.exports = {
   sequelize,
   Shop,
   User,
+  PendingSignup,
   Audit,
   StockReconciliation,
   Customer,

@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { Shop, User, Setting, sequelize } = require('../models');
+const { Shop, User, Setting, PendingSignup, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { normalizeUsername } = require('../utils/username');
 const { generateUniqueShopSlug } = require('../utils/shop');
@@ -82,10 +82,22 @@ exports.login = async (req, res, next) => {
     }
 
     if (!user.isVerified) {
-      return res.status(403).json({
-        needsVerification: true,
-        email: user.email || '',
-        message: 'Please verify your email address before signing in.',
+      // Legacy accounts created before email verification was introduced: allow
+      // sign-in so the admin can add/verify their email from the Profile page.
+      // New accounts never exist unverified (they are created only after the
+      // verification link is clicked), so no new shop can sign in this way.
+      return res.status(200).json({
+        token: signToken(user),
+        user: {
+          id: user.id,
+          name: user.name,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          shopId: user.shopId,
+          shop: null,
+          isVerified: false,
+        },
       });
     }
 
@@ -101,9 +113,11 @@ exports.login = async (req, res, next) => {
         id: user.id,
         name: user.name,
         username: user.username,
+        email: user.email,
         role: user.role,
         shopId: user.shopId,
         shop,
+        isVerified: true,
       },
     });
   } catch (error) {
@@ -113,8 +127,6 @@ exports.login = async (req, res, next) => {
 };
 
 exports.signup = async (req, res, next) => {
-  const transaction = await sequelize.transaction();
-
   try {
     const {
       shopName,
@@ -129,18 +141,15 @@ exports.signup = async (req, res, next) => {
     const normalizedEmail = rawEmail ? String(rawEmail).trim().toLowerCase() : '';
 
     if (!normalizedShopName || !normalizedEmail || !normalizedUsername || !password || !confirmPassword) {
-      await transaction.rollback();
       return res.status(400).json({ message: 'Shop name, email, username, password, and confirm password are required' });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
-      await transaction.rollback();
       return res.status(400).json({ message: 'Please enter a valid email address' });
     }
 
     if (password !== confirmPassword) {
-      await transaction.rollback();
       return res.status(400).json({ message: 'Passwords do not match' });
     }
 
@@ -150,99 +159,96 @@ exports.signup = async (req, res, next) => {
           [Op.iLike]: normalizedShopName,
         },
       },
-      transaction,
     });
 
     if (existingShop) {
-      await transaction.rollback();
       return res.status(409).json({ message: 'Shop name is already in use' });
     }
 
-    const existingEmail = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } }, transaction });
+    const pendingShop = await PendingSignup.findOne({ where: { shopName: { [Op.iLike]: normalizedShopName } } });
+    if (pendingShop && pendingShop.email.toLowerCase() !== normalizedEmail) {
+      return res.status(409).json({ message: 'Shop name is already being registered by another account' });
+    }
+
+    const existingEmail = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } } });
     if (existingEmail) {
       // Check whether the user's shop still exists — if the shop was deleted but the
       // user row wasn't cleaned up (orphaned record), free the email and continue.
       const ownerShop = existingEmail.shopId
-        ? await Shop.findByPk(existingEmail.shopId, { transaction })
+        ? await Shop.findByPk(existingEmail.shopId)
         : null;
 
       if (ownerShop || existingEmail.shopId === null) {
         // Active user (shop exists) or a SuperAdmin — genuinely taken
-        await transaction.rollback();
         return res.status(409).json({ message: 'An account with this email already exists' });
       }
 
       // Orphaned user: shop was deleted but row remained — clear the email so the
       // unique constraint doesn't block the INSERT below, then delete the row.
-      await existingEmail.update({ email: null }, { transaction });
-      await existingEmail.destroy({ transaction });
-    }
-
-    const shop = await Shop.create(
-      {
-        name: normalizedShopName,
-        slug: await generateUniqueShopSlug(Shop, normalizedShopName),
-      },
-      { transaction }
-    );
-
-    await Setting.create(
-      {
-        shopName: shop.name,
-        address: '',
-        phone: '',
-        currency: 'USD',
-        shopId: shop.id,
-      },
-      { transaction }
-    );
-
-    const existingUser = await User.findOne({ where: { shopId: shop.id, username: normalizedUsername }, transaction });
-    if (existingUser) {
-      await transaction.rollback();
-      return res.status(409).json({ message: 'Username is already in use for this shop' });
+      await existingEmail.update({ email: null });
+      await existingEmail.destroy();
     }
 
     const hash = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const user = await User.create(
-      {
-        name: normalizedUsername,
-        username: normalizedUsername,
+
+    // Re-signing up while a verification is already pending for this email:
+    // refresh the pending record with the latest details and resend the link.
+    const pendingExisting = await PendingSignup.findOne({ where: { email: { [Op.iLike]: normalizedEmail } } });
+    if (pendingExisting) {
+      pendingExisting.shopName = normalizedShopName;
+      pendingExisting.username = normalizedUsername;
+      pendingExisting.passwordHash = hash;
+      pendingExisting.verificationToken = verificationToken;
+      await pendingExisting.save();
+
+      try {
+        await sendVerificationEmail(normalizedEmail, verificationToken, {
+          name: normalizedUsername,
+          shopName: normalizedShopName,
+        });
+      } catch (emailError) {
+        console.error('Failed to resend verification email:', emailError.message);
+        return res.status(502).json({
+          message: 'Unable to send the verification email right now. Please try again later.',
+        });
+      }
+
+      return res.status(201).json({
+        message: 'A new verification link has been sent to your email. Your shop will be created once you verify.',
         email: normalizedEmail,
-        password: hash,
-        role: 'Admin',
-        shopId: shop.id,
-        isVerified: false,
-        verificationToken,
-      },
-      { transaction }
-    );
+        shopName: normalizedShopName,
+      });
+    }
+
+    await PendingSignup.create({
+      shopName: normalizedShopName,
+      username: normalizedUsername,
+      email: normalizedEmail,
+      passwordHash: hash,
+      verificationToken,
+    });
 
     try {
       await sendVerificationEmail(normalizedEmail, verificationToken, {
         name: normalizedUsername,
-        shopName: shop.name,
+        shopName: normalizedShopName,
       });
-      await transaction.commit();
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError.message);
-      await transaction.rollback();
+      await PendingSignup.destroy({ where: { email: normalizedEmail } });
 
       return res.status(502).json({
-        message: 'Account creation failed because the verification email could not be sent. Please try again.',
+        message: 'Registration failed because the verification email could not be sent. Please try again.',
       });
     }
 
     res.status(201).json({
-      message: 'Account created. Please check your email to verify your account.',
+      message: 'Registration received. Please check your email to verify your account — your shop will be created once your email is verified.',
       email: normalizedEmail,
-      shopName: shop.name,
+      shopName: normalizedShopName,
     });
   } catch (error) {
-    if (!transaction.finished) {
-      await transaction.rollback();
-    }
     next(error);
   }
 };
@@ -254,6 +260,80 @@ exports.verifyEmail = async (req, res, next) => {
       return res.status(400).json({ message: 'Verification token is required' });
     }
 
+    const pending = await PendingSignup.findOne({ where: { verificationToken: token } });
+
+    if (pending) {
+      const transaction = await sequelize.transaction();
+      try {
+        const shopNameTaken = await Shop.findOne({
+          where: { name: { [Op.iLike]: pending.shopName } },
+          transaction,
+        });
+        if (shopNameTaken) {
+          await transaction.rollback();
+          await pending.destroy();
+          return res.status(409).json({
+            message: 'That shop name was already taken before your email was verified. Please sign up again with a different shop name.',
+          });
+        }
+
+        const emailTaken = await User.findOne({ where: { email: { [Op.iLike]: pending.email } }, transaction });
+        if (emailTaken) {
+          await transaction.rollback();
+          await pending.destroy();
+          return res.status(409).json({
+            message: 'That email is already registered to another account. Please sign in or use a different email.',
+          });
+        }
+
+        const shop = await Shop.create(
+          {
+            name: pending.shopName,
+            slug: await generateUniqueShopSlug(Shop, pending.shopName),
+          },
+          { transaction }
+        );
+
+        await Setting.create(
+          {
+            shopName: shop.name,
+            address: '',
+            phone: '',
+            currency: 'USD',
+            shopId: shop.id,
+          },
+          { transaction }
+        );
+
+        await User.create(
+          {
+            name: pending.username,
+            username: pending.username,
+            email: pending.email,
+            password: pending.passwordHash,
+            role: 'Admin',
+            shopId: shop.id,
+            isVerified: true,
+            verificationToken: null,
+          },
+          { transaction }
+        );
+
+        await pending.destroy({ transaction });
+        await transaction.commit();
+
+        return res.json({
+          message: 'Email verified successfully. Your shop has been created and you can now sign in.',
+        });
+      } catch (error) {
+        if (!transaction.finished) {
+          await transaction.rollback();
+        }
+        throw error;
+      }
+    }
+
+    // Legacy flow: some accounts predate pending signups and hold unverified users.
     const user = await User.findOne({ where: { verificationToken: token } });
     if (!user) {
       return res.status(400).json({ message: 'This verification link is invalid or has already been used.' });
@@ -275,6 +355,27 @@ exports.resendVerification = async (req, res, next) => {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Pending (not yet created) registrations
+    const pending = await PendingSignup.findOne({ where: { email: { [Op.iLike]: normalizedEmail } } });
+    if (pending) {
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      await pending.update({ verificationToken });
+      try {
+        await sendVerificationEmail(normalizedEmail, verificationToken, {
+          name: pending.username,
+          shopName: pending.shopName,
+        });
+      } catch (emailError) {
+        console.error('Failed to resend verification email:', emailError.message);
+        return res.status(502).json({
+          message: 'Unable to send the verification email right now. Please try again later.',
+        });
+      }
+      return res.json({ message: 'A new verification link has been sent to your email address.' });
+    }
+
+    // Legacy flow: accounts created before pending signups were introduced
     const user = await User.findOne({ where: { email: { [Op.iLike]: normalizedEmail } } });
 
     // Always respond with success to avoid email enumeration

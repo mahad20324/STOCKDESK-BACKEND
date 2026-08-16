@@ -14,6 +14,7 @@ const adminRoutes = require('./routes/admin');
 const expenseRoutes = require('./routes/expenses');
 const auditRoutes = require('./routes/audit');
 const stockReconciliationRoutes = require('./routes/stockReconciliation');
+const profileRoutes = require('./routes/profile');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -127,6 +128,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/stock-reconciliation', stockReconciliationRoutes);
+app.use('/api/profile', profileRoutes);
 
 app.use(errorHandler);
 

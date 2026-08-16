@@ -7,6 +7,8 @@ const router = express.Router();
 
 router.use(authenticate, authorize(['SuperAdmin']));
 router.get('/overview', adminController.getOverview);
+router.get('/dashboard', adminController.getDashboard);
+router.get('/shops/:id', adminController.getShopDetail);
 router.delete('/shops/:id', adminController.deleteShop);
 
 module.exports = router;

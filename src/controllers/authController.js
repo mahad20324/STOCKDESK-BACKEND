@@ -472,7 +472,7 @@ exports.refreshToken = async (req, res, next) => {
       include: [{ model: Shop, as: 'shop', attributes: ['id', 'name', 'slug'], required: false }],
     });
 
-    if (!user || !user.isVerified) {
+    if (!user) {
       return res.status(401).json({ message: 'Invalid session' });
     }
 
@@ -483,9 +483,11 @@ exports.refreshToken = async (req, res, next) => {
         id: user.id,
         name: user.name,
         username: user.username,
+        email: user.email,
         role: user.role,
         shopId: user.shopId,
         shop: user.shop || null,
+        isVerified: user.isVerified,
       },
     });
   } catch (error) {

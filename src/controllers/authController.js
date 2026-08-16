@@ -66,9 +66,11 @@ exports.login = async (req, res, next) => {
     }
 
     if (!user) {
-      user = await User.findOne({ where: { shopId: null, username, role: 'SuperAdmin' } });
+      // Platform owner lookup — by username or email, regardless of shopId.
+      // SuperAdmin accounts must never be scoped to a tenant shop.
+      user = await User.findOne({ where: { username, role: 'SuperAdmin' } });
       if (!user && isEmail) {
-        user = await User.findOne({ where: { shopId: null, email: username, role: 'SuperAdmin' } });
+        user = await User.findOne({ where: { email: username, role: 'SuperAdmin' } });
       }
     }
 

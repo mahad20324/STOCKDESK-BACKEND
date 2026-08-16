@@ -1,5 +1,6 @@
 const crypto = require('crypto');
-const { User, Shop, PendingSignup } = require('../models');
+const bcrypt = require('bcryptjs');
+const { User, Shop, Setting, Product, Sale, Customer, PendingSignup } = require('../models');
 const { Op } = require('sequelize');
 const { sendVerificationEmail } = require('../services/emailService');
 
@@ -32,11 +33,73 @@ exports.getProfile = async (req, res, next) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const shop = user.shopId
-      ? await Shop.findByPk(user.shopId, { attributes: ['id', 'name', 'slug'] })
-      : null;
+    let shop = null;
+    let shopDetails = null;
+    let stats = null;
 
-    res.json(toProfile(user, shop));
+    if (user.shopId) {
+      shop = await Shop.findByPk(user.shopId, { attributes: ['id', 'name', 'slug'] });
+      const setting = await Setting.findOne({ where: { shopId: user.shopId } });
+      shopDetails = setting
+        ? {
+            shopName: setting.shopName,
+            address: setting.address || '',
+            phone: setting.phone || '',
+            currency: setting.currency || 'USD',
+          }
+        : null;
+
+      const [products, sales, customers] = await Promise.all([
+        Product.count({ where: { shopId: user.shopId } }),
+        Sale.count({ where: { shopId: user.shopId } }),
+        Customer.count({ where: { shopId: user.shopId } }),
+      ]);
+      stats = { products, sales, customers };
+    }
+
+    res.json(
+      toProfile(user, shop, {
+        shopDetails,
+        stats,
+        emailVerified: user.isVerified,
+      })
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({ message: 'Current password, new password, and confirm password are required' });
+    }
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match' });
+    }
+
+    const strongPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
+    if (!strongPassword.test(newPassword)) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters and include letters, numbers, and a special character.',
+      });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) {
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.json({ message: 'Password updated successfully.' });
   } catch (error) {
     next(error);
   }

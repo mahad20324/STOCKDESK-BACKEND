@@ -2,13 +2,15 @@ const bcrypt = require('bcryptjs');
 const { User } = require('../models');
 const { normalizeUsername } = require('../utils/username');
 
-const MANAGEABLE_SHOP_ROLES = ['Admin', 'Staff'];
+function normalizeManageableRole(role) {
+  return role === 'Admin' ? 'Admin' : 'Staff';
+}
 
 exports.listUsers = async (req, res, next) => {
   try {
     const users = await User.findAll({
       where: { shopId: req.user.shopId },
-      attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
+      attributes: ['id', 'name', 'username', 'role', 'displayRole', 'createdAt', 'shopId'],
       order: [['createdAt', 'ASC']],
     });
     res.json(users);
@@ -21,7 +23,7 @@ exports.getUser = async (req, res, next) => {
   try {
     const user = await User.findOne({
       where: { id: req.params.id, shopId: req.user.shopId },
-      attributes: ['id', 'name', 'username', 'role', 'createdAt', 'shopId'],
+      attributes: ['id', 'name', 'username', 'role', 'displayRole', 'createdAt', 'shopId'],
     });
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
@@ -35,16 +37,14 @@ exports.createUser = async (req, res, next) => {
     const username = normalizeUsername(req.body.username);
     const password = req.body.password ? String(req.body.password) : '';
     const confirmPassword = req.body.confirmPassword ? String(req.body.confirmPassword) : '';
-    const role = req.body.role || 'Staff';
+    const role = req.body.role ? normalizeManageableRole(req.body.role) : 'Staff';
+    const displayRole = req.body.displayRole || role;
 
     if (!username || !password || !confirmPassword) {
       return res.status(400).json({ message: 'Username, password, and confirm password are required' });
     }
     if (password !== confirmPassword) {
       return res.status(400).json({ message: 'Passwords do not match' });
-    }
-    if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
-      return res.status(400).json({ message: 'Invalid role selected' });
     }
 
     const existingUser = await User.findOne({ where: { shopId: req.user.shopId, username } });
@@ -59,6 +59,7 @@ exports.createUser = async (req, res, next) => {
       email: null,
       password: hash,
       role,
+      displayRole,
       shopId: req.user.shopId,
       isVerified: true,
       verificationToken: null,
@@ -69,6 +70,7 @@ exports.createUser = async (req, res, next) => {
       name: user.name,
       username: user.username,
       role: user.role,
+      displayRole: user.displayRole,
       shopId: user.shopId,
     });
   } catch (error) {
@@ -100,14 +102,12 @@ exports.updateUser = async (req, res, next) => {
       user.name = normalizedUsername;
     }
     if (role) {
-      if (!MANAGEABLE_SHOP_ROLES.includes(role)) {
-        return res.status(400).json({ message: 'Invalid role selected' });
-      }
-      user.role = role;
+      user.role = normalizeManageableRole(role);
+      user.displayRole = req.body.displayRole || role;
     }
     await user.save();
 
-    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, shopId: user.shopId });
+    res.json({ id: user.id, name: user.name, username: user.username, role: user.role, displayRole: user.displayRole, shopId: user.shopId });
   } catch (error) {
     next(error);
   }

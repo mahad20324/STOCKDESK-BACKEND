@@ -40,6 +40,11 @@ User.init(
       allowNull: false,
       defaultValue: 'Staff',
     },
+    displayRole: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null,
+    },
     shopId: {
       type: DataTypes.INTEGER,
       allowNull: true,

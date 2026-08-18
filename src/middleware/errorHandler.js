@@ -14,6 +14,11 @@ exports.errorHandler = (err, req, res, next) => {
   }
 
   const status = err.status || 500;
-  const message = err.message || 'Internal server error';
+
+  if (status >= 500) {
+    return res.status(status).json({ message: 'Internal server error' });
+  }
+
+  const message = err.message || 'Request failed';
   res.status(status).json({ message });
 };

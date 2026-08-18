@@ -35,6 +35,10 @@ const useSsl =
   ['true', 'require', '1'].includes(String(process.env.DATABASE_SSL || '').toLowerCase()) ||
   Boolean(connectionString);
 
+const sslRejectUnauthorized = !['false', '0'].includes(
+  String(process.env.DB_SSL_REJECT_UNAUTHORIZED || '').toLowerCase()
+);
+
 const sequelize = connectionString
   ? new Sequelize(connectionString, {
       dialect: 'postgres',
@@ -43,7 +47,7 @@ const sequelize = connectionString
         ? {
             ssl: {
               require: true,
-              rejectUnauthorized: false,
+              rejectUnauthorized: sslRejectUnauthorized,
             },
           }
         : {},
@@ -61,7 +65,7 @@ const sequelize = connectionString
           ? {
               ssl: {
                 require: true,
-                rejectUnauthorized: false,
+                rejectUnauthorized: sslRejectUnauthorized,
               },
             }
           : {},

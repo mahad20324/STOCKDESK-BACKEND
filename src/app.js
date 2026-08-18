@@ -115,6 +115,23 @@ app.post('/api/auth/login', loginLimiter);
 app.post('/api/auth/forgot-password', authLimiter);
 app.post('/api/auth/resend-verification', authLimiter);
 
+// CRUD rate limiter — protects all data endpoints
+const crudLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please slow down.' },
+});
+
+app.use('/api/users', crudLimiter);
+app.use('/api/customers', crudLimiter);
+app.use('/api/products', crudLimiter);
+app.use('/api/sales', crudLimiter);
+app.use('/api/expenses', crudLimiter);
+app.use('/api/audit', crudLimiter);
+app.use('/api/stock-reconciliation', crudLimiter);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/customers', customerRoutes);

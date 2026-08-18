@@ -45,7 +45,7 @@ exports.createSale = async (req, res, next) => {
       product.quantity -= item.quantity;
       await product.save({ transaction });
 
-      itemRecords.push({ productId: product.id, quantity: item.quantity, price: product.sellPrice });
+      itemRecords.push({ productId: product.id, quantity: item.quantity, price: product.sellPrice, costOfGoods: product.buyPrice || 0 });
     }
 
     let discountAmount = 0;

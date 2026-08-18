@@ -26,6 +26,11 @@ SaleItem.init(
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
+    costOfGoods: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      defaultValue: 0,
+    },
     shopId: {
       type: DataTypes.INTEGER,
       allowNull: true,

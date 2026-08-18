@@ -79,6 +79,45 @@ exports.summary = async (req, res, next) => {
   }
 };
 
+exports.dashboardStats = async (req, res, next) => {
+  try {
+    const shopId = req.user.shopId;
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const allProducts = await Product.findAll({
+      where: { shopId },
+      attributes: ['id', 'quantity', 'lowStock'],
+      raw: true,
+    });
+
+    const totalProducts = allProducts.length;
+    const totalStock = allProducts.reduce((sum, p) => sum + Number(p.quantity || 0), 0);
+    const lowStockCount = allProducts.filter((p) => Number(p.quantity || 0) < Math.max(5, Number(p.lowStock || 5))).length;
+
+    const salesTrend = await Sale.findAll({
+      where: { shopId, createdAt: { [Op.gte]: sevenDaysAgo } },
+      attributes: [
+        [fn('to_char', col('createdAt'), 'YYYY-MM-DD'), 'day'],
+        [fn('COALESCE', fn('SUM', col('total')), 0), 'sales'],
+        [fn('COUNT', col('id')), 'orders'],
+      ],
+      group: [fn('to_char', col('createdAt'), 'YYYY-MM-DD')],
+      order: [[fn('to_char', col('createdAt'), 'YYYY-MM-DD'), 'ASC']],
+      raw: true,
+    });
+
+    res.json({
+      products: { totalProducts, totalStock, lowStockCount },
+      salesTrend: salesTrend || [],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.dailySales = async (req, res, next) => {
   try {
     const today = new Date();

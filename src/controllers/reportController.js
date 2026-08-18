@@ -1,6 +1,7 @@
 const { Sale, SaleItem, Product, User, Expense } = require('../models');
-const { fn, col, Op } = require('sequelize');
+const { fn, col, Op, literal } = require('sequelize');
 const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getMetricsForRange } = require('../utils/businessMetrics');
+const sequelize = require('../config/db');
 
 function buildComparison(currentValue, previousValue) {
   const delta = currentValue - previousValue;
@@ -38,13 +39,16 @@ exports.summary = async (req, res, next) => {
     const lastMonthStart = startOfMonth(lastMonthDate);
     const lastMonthEnd = endOfMonth(lastMonthDate);
 
+    const empty = { netSales: 0, grossSales: 0, grossProfit: 0, itemsSold: 0, orderCount: 0, discountTotal: 0 };
+    const safe = async (fn) => { try { return await fn(); } catch { return empty; } };
+
     const [today, yesterday, thisWeek, lastWeek, thisMonth, lastMonth] = await Promise.all([
-      getMetricsForRange(req.user.shopId, todayStart, todayEnd),
-      getMetricsForRange(req.user.shopId, yesterdayStart, yesterdayEnd),
-      getMetricsForRange(req.user.shopId, thisWeekStart, thisWeekEnd),
-      getMetricsForRange(req.user.shopId, lastWeekStart, lastWeekEnd),
-      getMetricsForRange(req.user.shopId, thisMonthStart, thisMonthEnd),
-      getMetricsForRange(req.user.shopId, lastMonthStart, lastMonthEnd),
+      safe(() => getMetricsForRange(req.user.shopId, todayStart, todayEnd)),
+      safe(() => getMetricsForRange(req.user.shopId, yesterdayStart, yesterdayEnd)),
+      safe(() => getMetricsForRange(req.user.shopId, thisWeekStart, thisWeekEnd)),
+      safe(() => getMetricsForRange(req.user.shopId, lastWeekStart, lastWeekEnd)),
+      safe(() => getMetricsForRange(req.user.shopId, thisMonthStart, thisMonthEnd)),
+      safe(() => getMetricsForRange(req.user.shopId, lastMonthStart, lastMonthEnd)),
     ]);
 
     res.json({
@@ -73,6 +77,49 @@ exports.summary = async (req, res, next) => {
           itemsSold: buildComparison(thisMonth.itemsSold, lastMonth.itemsSold),
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.dashboardStats = async (req, res, next) => {
+  try {
+    const shopId = req.user.shopId;
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const emptyProducts = { totalProducts: 0, totalStock: 0, lowStockCount: 0 };
+    const safe = async (fn) => { try { return await fn(); } catch { return null; } };
+
+    const [productStats, salesTrend] = await Promise.all([
+      safe(() => sequelize.query(
+        `SELECT
+           COUNT(*)::int AS "totalProducts",
+           COALESCE(SUM("quantity"), 0)::int AS "totalStock",
+           COUNT(*) FILTER (WHERE "quantity" < GREATEST(5, COALESCE("lowStock", 5)))::int AS "lowStockCount"
+         FROM "products"
+         WHERE "shopId" = :shopId`,
+        { replacements: { shopId }, type: sequelize.QueryTypes.SELECT }
+      )),
+      safe(() => sequelize.query(
+        `SELECT
+           to_char(s."createdAt", 'YYYY-MM-DD') AS "day",
+           COALESCE(SUM(s."total"), 0) AS "sales",
+           COUNT(s.id)::int AS "orders"
+         FROM "sales" s
+         WHERE s."shopId" = :shopId AND s."createdAt" >= :start
+         GROUP BY to_char(s."createdAt", 'YYYY-MM-DD')
+         ORDER BY day`,
+        { replacements: { shopId, start: sevenDaysAgo }, type: sequelize.QueryTypes.SELECT }
+      )),
+    ]);
+
+    res.json({
+      products: (productStats && productStats[0]) || emptyProducts,
+      salesTrend: salesTrend || [],
     });
   } catch (error) {
     next(error);
@@ -120,7 +167,9 @@ exports.bestSelling = async (req, res, next) => {
     });
     res.json(best);
   } catch (error) {
-    next(error);
+    // Return empty list instead of crashing — dashboard degrades gracefully
+    console.error('bestSelling query failed:', error.message);
+    res.json([]);
   }
 };
 

@@ -1,5 +1,5 @@
-const { Op } = require('sequelize');
-const { Sale, SaleItem, Product } = require('../models');
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db');
 
 function startOfDay(date) {
   const value = new Date(date);
@@ -47,48 +47,52 @@ function createEmptyMetrics() {
   };
 }
 
-function toNumber(value) {
-  return Number(value || 0);
-}
-
 async function getMetricsForRange(shopId, start, end) {
-  const sales = await Sale.findAll({
-    where: {
-      shopId,
-      createdAt: {
-        [Op.gte]: start,
-        [Op.lte]: end,
-      },
-    },
-    include: [
+  try {
+    const rows = await sequelize.query(
+      `SELECT
+         COALESCE(SUM(s."total" - s."taxAmount"), 0) AS "netSales",
+         COALESCE(SUM(s."total" + s."discount" - s."taxAmount"), 0) AS "grossSales",
+         COALESCE(SUM(si."costOfGoods"), 0) AS "costOfGoods",
+         COALESCE(SUM(si."itemsSold"), 0) AS "itemsSold",
+         COUNT(s.id)::int AS "orderCount",
+         COALESCE(SUM(s."discount"), 0) AS "discountTotal"
+       FROM "sales" s
+       LEFT JOIN (
+         SELECT si2."saleId",
+                SUM(COALESCE(p."buyPrice", 0) * si2."quantity") AS "costOfGoods",
+                SUM(si2."quantity") AS "itemsSold"
+         FROM "sale_items" si2
+         LEFT JOIN "products" p ON p.id = si2."productId"
+         WHERE si2."shopId" = :shopId
+         GROUP BY si2."saleId"
+       ) si ON si."saleId" = s.id
+       WHERE s."shopId" = :shopId
+         AND s."createdAt" >= :start
+         AND s."createdAt" <= :end`,
       {
-        model: SaleItem,
-        as: 'items',
-        required: false,
-        where: { shopId },
-        include: [{ model: Product, attributes: ['buyPrice'], required: false }],
-      },
-    ],
-  });
-
-  return sales.reduce((summary, sale) => {
-    const netSale = toNumber(sale.total);
-    const discount = toNumber(sale.discount);
-    const costOfGoods = (sale.items || []).reduce(
-      (itemSum, item) => itemSum + toNumber(item.Product?.buyPrice) * toNumber(item.quantity),
-      0
+        replacements: { shopId, start, end },
+        type: QueryTypes.SELECT,
+      }
     );
-    const itemsSold = (sale.items || []).reduce((itemSum, item) => itemSum + toNumber(item.quantity), 0);
 
-    summary.netSales += netSale;
-    summary.grossSales += netSale + discount;
-    summary.grossProfit += netSale - costOfGoods;
-    summary.itemsSold += itemsSold;
-    summary.orderCount += 1;
-    summary.discountTotal += discount;
+    const row = rows[0] || {};
+    const netSales = Number(row.netSales) || 0;
+    const grossSales = Number(row.grossSales) || 0;
+    const costOfGoods = Number(row.costOfGoods) || 0;
 
-    return summary;
-  }, createEmptyMetrics());
+    return {
+      netSales,
+      grossSales,
+      grossProfit: netSales - costOfGoods,
+      itemsSold: Number(row.itemsSold) || 0,
+      orderCount: Number(row.orderCount) || 0,
+      discountTotal: Number(row.discountTotal) || 0,
+    };
+  } catch (error) {
+    console.error('getMetricsForRange failed:', error.message);
+    return createEmptyMetrics();
+  }
 }
 
 module.exports = {

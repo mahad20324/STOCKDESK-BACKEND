@@ -51,8 +51,11 @@ async function initializeDatabase() {
   try {
     console.log('[db-init] Starting background database initialization...');
     await runMigrations();
-    console.log('[db-init] Running Sequelize sync...');
-    await sequelize.sync({ alter: { drop: false } });
+    // Schema sync: production defaults to create-only (safe) sync. Set
+    // DB_SYNC_ALTER=true to allow Sequelize to alter existing tables.
+    const allowAlter = String(process.env.DB_SYNC_ALTER || '').toLowerCase() === 'true';
+    await sequelize.sync(allowAlter ? { alter: { drop: false } } : {});
+    console.log(`[db-init] Sequelize sync completed (${allowAlter ? 'alter' : 'create-only'})`);
     console.log('[db-init] Initializing application data...');
     await initAppData();
     console.log('[db-init] Database initialization completed successfully');

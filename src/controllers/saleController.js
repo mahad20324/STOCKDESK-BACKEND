@@ -2,6 +2,7 @@ const { Sale, SaleItem, Product, Receipt, User, Setting, Shop, Customer, DayClos
 const { generateReceiptPdf } = require('../utils/receiptGenerator');
 const { startOfDay, endOfDay, getMetricsForRange } = require('../utils/businessMetrics');
 const { Op } = require('sequelize');
+const auditController = require('./auditController');
 
 function buildReceiptNumber(id) {
   return `SD-${String(id).padStart(6, '0')}`;
@@ -116,6 +117,18 @@ exports.createSale = async (req, res, next) => {
     const receipt = await Receipt.create({ saleId: sale.id, receiptNumber, shopId: req.user.shopId }, { transaction });
 
     await transaction.commit();
+
+    if (req.user.shopId) {
+      await auditController.logAction(
+        req.user.id,
+        req.user.shopId,
+        'CREATE',
+        'SALE',
+        sale.id,
+        { total, discount: discountAmount, taxAmount, paymentMethod, currency: saleCurrency, items: itemRecords.length },
+        req
+      );
+    }
 
     res.status(201).json({ saleId: sale.id, receipt: receiptNumber, total, discount: discountAmount, taxAmount, currency: saleCurrency });
   } catch (error) {

@@ -64,22 +64,28 @@ async function initializeDatabase() {
   }
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function start() {
-  try {
-    console.log('[startup] Verifying database connection...');
-    await sequelize.authenticate();
-    console.log('[startup] Database connection verified');
+  // Start listening BEFORE any DB work so the /api healthcheck passes quickly.
+  // A slow or briefly unavailable database must not prevent the process from
+  // becoming healthy; DB initialization runs in the background and retries.
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[startup] StockDesk backend listening on port ${PORT}`);
+  });
 
-    // Start listening BEFORE heavy DB work so healthcheck can pass quickly
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`[startup] StockDesk backend listening on port ${PORT}`);
-    });
-
-    // Run database initialization in the background after server is listening
-    setImmediate(initializeDatabase);
-  } catch (error) {
-    console.error('[startup] Failed to verify database connection:', error.message);
-    process.exit(1);
+  let attempt = 0;
+  while (true) {
+    attempt += 1;
+    try {
+      await sequelize.authenticate();
+      console.log('[startup] Database connection verified');
+      await initializeDatabase();
+      return;
+    } catch (error) {
+      console.error(`[startup] Database init attempt ${attempt} failed: ${error.message}`);
+      await sleep(5000);
+    }
   }
 }
 

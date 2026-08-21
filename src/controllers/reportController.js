@@ -191,7 +191,7 @@ exports.rangeReport = async (req, res, next) => {
         where: { shopId: req.user.shopId, createdAt: { [Op.gte]: rangeStart, [Op.lte]: rangeEnd } },
         include: [
           { model: User, as: 'cashier', attributes: ['id', 'name'] },
-          { model: SaleItem, as: 'items', required: false, include: [{ model: Product, attributes: ['id', 'name', 'buyPrice'] }] },
+          { model: SaleItem, as: 'items', required: false, include: [{ model: Product, attributes: ['id', 'name'] }] },
         ],
         order: [['createdAt', 'DESC']],
       }),
@@ -200,7 +200,7 @@ exports.rangeReport = async (req, res, next) => {
         attributes: ['productId', [fn('SUM', col('SaleItem.quantity')), 'unitsSold'], [fn('SUM', col('SaleItem.price')), 'revenue']],
         include: [
           { model: Sale, attributes: [], where: { shopId: req.user.shopId, createdAt: { [Op.gte]: rangeStart, [Op.lte]: rangeEnd } }, required: true },
-          { model: Product, attributes: ['id', 'name', 'buyPrice'], required: false },
+          { model: Product, attributes: ['id', 'name'], required: false },
         ],
         group: ['SaleItem.productId', 'Product.id'],
         order: [[fn('SUM', col('SaleItem.quantity')), 'DESC']],
